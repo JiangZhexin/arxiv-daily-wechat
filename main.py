@@ -39,8 +39,15 @@ DEFAULT_TEMPLATE_FIELDS = {
     "remark": "remark",
 }
 
-# 单条模板消息里放几篇论文（改版后每条 1 篇，以便完整展示中英文摘要）
-PAPERS_PER_MESSAGE = 1
+# 消息模式：
+#   digest   = 速览模式（默认）：每条消息含多篇论文（编号+中文标题+一句话总结），一天 30 篇也只要 5 条消息
+#   detailed = 详细模式：每篇 1 条消息，含一句话总结 + 中英文摘要，可点击跳转原文
+DEFAULT_MESSAGE_MODE = "digest"
+
+# 详细模式：每条消息 1 篇（中英文摘要完整展示）
+DETAILED_PAPERS_PER_MESSAGE = 1
+# 速览模式：每条消息最多几篇
+DIGEST_PAPERS_PER_MESSAGE = 6
 
 # 分类中文名，用于消息里展示
 CATEGORY_NAMES = {
@@ -79,7 +86,7 @@ def load_config():
         else arxiv_cfg.get("categories", DEFAULT_CATEGORIES)
     )
     hours_back = int(os.environ.get("ARXIV_HOURS_BACK") or arxiv_cfg.get("hours_back", 60))
-    max_papers_per_run = int(os.environ.get("ARXIV_MAX_PAPERS") or arxiv_cfg.get("max_papers_per_run", 8))
+    max_papers_per_run = int(os.environ.get("ARXIV_MAX_PAPERS") or arxiv_cfg.get("max_papers_per_run", 30))
 
     ds_cfg = cfg.get("deepseek", {})
     deepseek = {
@@ -91,12 +98,16 @@ def load_config():
     wx_cfg = cfg.get("wechat", {})
     fields = dict(DEFAULT_TEMPLATE_FIELDS)
     fields.update(wx_cfg.get("template_fields", {}))
+    mode = (os.environ.get("WECHAT_MODE") or wx_cfg.get("mode") or DEFAULT_MESSAGE_MODE).strip().lower()
+    if mode not in ("digest", "detailed"):
+        mode = DEFAULT_MESSAGE_MODE
     wechat = {
         "app_id": os.environ.get("WECHAT_APP_ID") or wx_cfg.get("app_id", ""),
         "app_secret": os.environ.get("WECHAT_APP_SECRET") or wx_cfg.get("app_secret", ""),
         "template_id": os.environ.get("WECHAT_TEMPLATE_ID") or wx_cfg.get("template_id", ""),
         "user_openid": os.environ.get("WECHAT_OPENID") or wx_cfg.get("user_openid", ""),
         "template_fields": fields,
+        "mode": mode,
     }
 
     return {
@@ -114,12 +125,15 @@ def _category_label(primary: str) -> str:
     return CATEGORY_NAMES.get(primary, primary)
 
 
-def build_messages(papers, summaries, template_fields, categories, date_str):
+def build_messages(papers, summaries, template_fields, categories, date_str, mode=DEFAULT_MESSAGE_MODE):
     """
-    把论文列表 + 总结整理成模板消息。每篇论文一条消息，含一句话总结 + 中英文摘要。
+    把论文列表 + 总结整理成模板消息。
+
+    mode="digest"   ：速览模式，每条消息含多篇论文（编号+中文标题+一句话总结）
+    mode="detailed" ：详细模式，每篇 1 条消息，含一句话总结 + 中英文摘要，可点击跳转原文
 
     返回: list[dict]，每个 dict:
-        {"data": {模板字段: {...}}, "url": "论文 arxiv 链接（点击消息可跳转）"}
+        {"data": {模板字段: {...}}, "url": "论文 arxiv 链接（可选）"}
     """
     category_text = "、".join(_category_label(c) for c in categories)
     first_text = "📚 arXiv 每日论文速览"
@@ -135,39 +149,56 @@ def build_messages(papers, summaries, template_fields, categories, date_str):
         template_fields["remark"],
     )
 
+    def _base_data(remark_text):
+        return {
+            f: {"value": first_text},
+            k1: {"value": keyword1_text},
+            k2: {"value": keyword2_text},
+            k3: {"value": keyword3_text},
+            r: {"value": remark_text},
+        }
+
+    def _cut(text, limit):
+        return text[:limit] + ("…" if len(text) > limit else "")
+
     messages = []
-    for p in papers:
-        info = summaries.get(p["id"], {})
-        title_zh = info.get("title_zh") or p["title"]
-        one_line = info.get("summary") or "（未生成总结）"
-        # 英文摘要：直接用 arXiv 原文（截断控制长度）
-        abstract_en = p["summary"][:220] + ("…" if len(p["summary"]) > 220 else "")
-        # 中文摘要：DeepSeek 生成的中文翻译
-        abstract_zh = info.get("abstract_zh") or "（未生成翻译）"
-        label = _category_label(p["primary"])
 
-        remark_text = (
-            f"[{p['id']}] {title_zh}（{label}）\n"
-            f"💡 {one_line}\n\n"
-            f"【EN Abstract】\n{abstract_en}\n\n"
-            f"【中文摘要】\n{abstract_zh}"
-        )
-        # 单条 remark 限长保护（微信模板消息字段上限约 600 字符）
+    if mode == "detailed":
+        # ---------- 详细模式：每篇 1 条，含中英文摘要 ----------
+        for p in papers:
+            info = summaries.get(p["id"], {})
+            title_zh = info.get("title_zh") or p["title"]
+            one_line = info.get("summary") or "（未生成总结）"
+            abstract_en = _cut(p["summary"], 220)
+            abstract_zh = info.get("abstract_zh") or "（未生成翻译）"
+            label = _category_label(p["primary"])
+
+            remark_text = (
+                f"[{p['id']}] {title_zh}（{label}）\n"
+                f"💡 {one_line}\n\n"
+                f"【EN Abstract】\n{abstract_en}\n\n"
+                f"【中文摘要】\n{abstract_zh}"
+            )
+            if len(remark_text) > 600:
+                remark_text = _cut(remark_text, 590)
+            messages.append({"data": _base_data(remark_text), "url": p["url"]})
+        return messages
+
+    # ---------- 速览模式（默认）：每条消息多篇论文 ----------
+    for i in range(0, len(papers), DIGEST_PAPERS_PER_MESSAGE):
+        chunk = papers[i : i + DIGEST_PAPERS_PER_MESSAGE]
+        lines = []
+        for p in chunk:
+            info = summaries.get(p["id"], {})
+            title_zh = info.get("title_zh") or p["title"]
+            one_line = info.get("summary") or "（未生成总结）"
+            label = _category_label(p["primary"])
+            lines.append(f"[{p['id']}] {title_zh}（{label}）\n{one_line}")
+        remark_text = "\n\n".join(lines)
         if len(remark_text) > 600:
-            remark_text = remark_text[:590] + "…（内容过长已截断）"
+            remark_text = _cut(remark_text, 590)
+        messages.append({"data": _base_data(remark_text), "url": None})
 
-        messages.append(
-            {
-                "data": {
-                    f: {"value": first_text},
-                    k1: {"value": keyword1_text},
-                    k2: {"value": keyword2_text},
-                    k3: {"value": keyword3_text},
-                    r: {"value": remark_text},
-                },
-                "url": p["url"],
-            }
-        )
     return messages
 
 
@@ -211,13 +242,16 @@ def main():
 
     # 3) 组织消息
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str)
-    print(f"[3/3] 共组织 {len(messages)} 条微信模板消息（每条最多 {PAPERS_PER_MESSAGE} 篇论文）")
+    mode = wx_cfg.get("mode", DEFAULT_MESSAGE_MODE)
+    messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, mode=mode)
+    per_msg = DIGEST_PAPERS_PER_MESSAGE if mode == "digest" else DETAILED_PAPERS_PER_MESSAGE
+    print(f"[3/3] 模式={mode}，共组织 {len(messages)} 条微信模板消息（每条最多 {per_msg} 篇论文）")
 
     if args.dry_run:
         print("\n================  dry-run 预览 ================")
         for idx, msg in enumerate(messages, 1):
-            print(f"\n----- 消息 {idx}  |  点击跳转: {msg['url']} -----")
+            jump = f" |  点击跳转: {msg['url']}" if msg.get("url") else ""
+            print(f"\n----- 消息 {idx}{jump} -----")
             for k, v in msg["data"].items():
                 print(f"{k}: {v['value']}")
         print("\n[dry-run] 仅预览，未发送微信。")

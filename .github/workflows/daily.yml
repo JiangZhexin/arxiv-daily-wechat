@@ -36,6 +36,7 @@ jobs:
           # ---------- Variables（在 Settings → Secrets and variables → Actions → Variables 中配置）----------
           ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}   # 如 "math.DG,math.GN,math.GT,math.GR,math.MG,math.NT"
           ARXIV_HOURS_BACK: ${{ vars.ARXIV_HOURS_BACK }}   # 回看小时数，默认 60；临时想看历史论文可调大到 120
-          ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}   # 单次最多推送篇数，默认 8
+          ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}   # 单次最多推送篇数，默认 30
+          WECHAT_MODE: ${{ vars.WECHAT_MODE }}             # digest=速览(默认) / detailed=每篇一条含中英文摘要
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}       # 如 deepseek-chat
         run: python main.py
