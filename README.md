@@ -1,5 +1,7 @@
 # arXiv 每日论文速览 → 微信推送 + 网页推文
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 每天自动抓取 arXiv 上 **微分几何（math.DG）、一般拓扑（math.GN）、几何拓扑（math.GT）、群论（math.GR）、度量几何（math.MG）、数论（math.NT）** 的新论文，用 **DeepSeek 生成 AI 总结与中英文摘要**，通过**微信公众号测试号**推送 **1 条汇总消息** 到你的微信，点击即可跳转到 **GitHub Pages 推文网页**（按分区列出全部论文，每篇含 AI 总结、中文摘要翻译、英文摘要原文与 arXiv 链接）。
 
 - 完全免费（GitHub Actions 定时 + DeepSeek 日均约 0.02 元）
@@ -191,3 +193,7 @@ arXiv 周六、周日不发布新论文，属正常现象；周一早上也会�
 - DeepSeek：每天 30-130 篇论文（含 AI 总结与摘要翻译），日均成本约 **0.02-0.05 元**
 - 微信公众号测试号：免费，无条数限制
 - GitHub Pages：免费
+
+## License
+
+本项目使用 [MIT License](LICENSE) 开源，欢迎自由使用、修改和分发。
