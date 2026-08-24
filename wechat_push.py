@@ -12,6 +12,8 @@ wechat_push.py
 模板消息 data 的字段名由你选择的模板决定（常见为 first / keyword1.. / remark），
 通过 template_fields 映射后本模块会按你模板的实际字段名发送。
 """
+import time
+
 import requests
 
 TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token"

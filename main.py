@@ -49,9 +49,6 @@ DETAILED_PAPERS_PER_MESSAGE = 1
 # 速览模式：每个分区消息里最多列几篇论文（微信单条消息长度有限）
 PAPERS_PER_SECTION = 5
 
-# arXiv 分区浏览页（速览消息点击跳转用）
-SECTION_LIST_URL = "https://arxiv.org/list/{cat}/recent"
-
 # 分类中文名，用于消息里展示
 CATEGORY_NAMES = {
     "math.DG": "微分几何",
@@ -227,15 +224,17 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
             lines.append(f"[{p['id']}] {title_zh}\n{one_line}")
             shown += 1
         if len(sec_papers) > shown:
-            lines.append(f"\n…本区共 {len(sec_papers)} 篇，更多请点上方查看 arXiv 列表")
+            lines.append(f"\n…本区共 {len(sec_papers)} 篇，完整列表见 arxiv.org/list/{sec}/recent")
+
         remark_text = "\n\n".join(lines)
         if len(remark_text) > 600:
             remark_text = _cut(remark_text, 590)
 
+        # 速览消息不设置跳转链接（避免点开直接跳走），内容全部显示在卡片上
         messages.append(
             {
                 "data": _base_data(remark_text, first_text, keyword1_text, keyword2_text),
-                "url": SECTION_LIST_URL.format(cat=sec),
+                "url": None,
             }
         )
 
