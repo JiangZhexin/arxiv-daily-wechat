@@ -138,12 +138,15 @@ def _assign_section(p, categories):
     return p["primary"]
 
 
-def build_messages(papers, summaries, template_fields, categories, date_str, mode=DEFAULT_MESSAGE_MODE):
+def build_messages(papers, summaries, template_fields, categories, date_str, mode=DEFAULT_MESSAGE_MODE, page_url=None):
     """
     把论文列表 + 总结整理成模板消息。
 
     mode="digest"   ：速览模式（默认），按分区归组去重，每个分区一条消息（编号+中文标题+一句话总结）
     mode="detailed" ：详细模式，每篇 1 条消息，含一句话总结 + 中英文摘要，可点击跳转原文
+
+    page_url: 速览消息点击跳转的网页 URL（如 GitHub Pages 的每日推文页面）。
+              若提供，速览消息点开会跳转到该网页（推荐，详情看网页）；不传则不跳转。
 
     返回: list[dict]，每个 dict:
         {"data": {模板字段: {...}}, "url": "点击消息跳转的链接（可选）"}
@@ -230,11 +233,11 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
         if len(remark_text) > 600:
             remark_text = _cut(remark_text, 590)
 
-        # 速览消息不设置跳转链接（避免点开直接跳走），内容全部显示在卡片上
+        # 速览消息：若提供了 page_url（GitHub Pages 推文页），点开跳转到网页看详情
         messages.append(
             {
                 "data": _base_data(remark_text, first_text, keyword1_text, keyword2_text),
-                "url": None,
+                "url": page_url,
             }
         )
 
@@ -279,12 +282,27 @@ def main():
     summaries = summarize_papers(papers, api_key=ds_cfg["api_key"], base_url=ds_cfg["base_url"], model=ds_cfg["model"])
     print(f"      成功总结 {len(summaries)}/{len(papers)} 篇")
 
-    # 3) 组织消息
+    # 3) 组织消息（先算好 page_url 再传给 build_messages）
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     mode = wx_cfg.get("mode", DEFAULT_MESSAGE_MODE)
-    messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, mode=mode)
+
+    # 若配置了 PAGE_BASE_URL（GitHub Pages 推文页地址），先生成页面文件并拼出 url
+    page_base_url = os.environ.get("PAGE_BASE_URL", "").strip()
+    page_url = None
+    if page_base_url and not args.dry_run:
+        try:
+            from page_builder import write_daily_page
+            page_path = write_daily_page(papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages")
+            page_url = page_base_url.rstrip("/") + "/" + os.path.basename(page_path)
+            print(f"      已生成推文页面: {page_path}")
+        except Exception as exc:
+            print(f"  [警告] 生成推文页面失败（不影响微信推送）: {exc}")
+            page_url = None
+
+    messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, mode=mode, page_url=page_url)
     if mode == "digest":
-        print(f"[3/3] 模式=按分区速览，共组织 {len(messages)} 条微信模板消息（每个分区 1 条）")
+        jump_hint = f" → 点击跳转推文页: {page_url}" if page_url else "（卡片内显示论文清单）"
+        print(f"[3/3] 模式=按分区速览，共组织 {len(messages)} 条微信模板消息（每个分区 1 条）{jump_hint}")
     else:
         print(f"[3/3] 模式=详细，共组织 {len(messages)} 条微信模板消息（每篇 1 条）")
 

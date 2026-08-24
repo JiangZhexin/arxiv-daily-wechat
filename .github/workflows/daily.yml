@@ -9,8 +9,16 @@ on:
     - cron: "30 23 * * *"
   workflow_dispatch:
 
+# Pages 部署需要的权限
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只允许一个部署在跑
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   daily-digest:
@@ -25,19 +33,40 @@ jobs:
       - name: 安装依赖
         run: pip install -r requirements.txt
 
-      - name: 抓取 arXiv 并推送微信
+      - name: 抓取 arXiv + 生成推文页面 + 推送微信
         env:
           # ---------- Secrets（在仓库 Settings → Secrets and variables → Actions → Secrets 中配置）----------
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}   # 可不填，默认 https://api.deepseek.com
+          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
           WECHAT_APP_ID: ${{ secrets.WECHAT_APP_ID }}
           WECHAT_APP_SECRET: ${{ secrets.WECHAT_APP_SECRET }}
           WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
           WECHAT_OPENID: ${{ secrets.WECHAT_OPENID }}
-          # ---------- Variables（在 Settings → Secrets and variables → Actions → Variables 中配置）----------
-          ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}   # 如 "math.DG,math.GN,math.GT,math.GR,math.MG,math.NT"
-          ARXIV_HOURS_BACK: ${{ vars.ARXIV_HOURS_BACK }}   # 回看小时数，默认 60；临时想看历史论文可调大到 120
-          ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}   # 单次最多推送篇数，默认 30
-          WECHAT_MODE: ${{ vars.WECHAT_MODE }}             # digest=速览(默认) / detailed=每篇一条含中英文摘要
-          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}       # 如 deepseek-chat
+          # ---------- Variables ----------
+          ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}
+          ARXIV_HOURS_BACK: ${{ vars.ARXIV_HOURS_BACK }}
+          ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}
+          WECHAT_MODE: ${{ vars.WECHAT_MODE }}
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          # GitHub Pages 推文页的根 URL（仓库名固定为 arxiv-daily-wechat）
+          # 第一次部署后可以从 Actions 日志 / Pages 页面看到完整 URL
+          PAGE_BASE_URL: https://jiangzhexin.github.io/arxiv-daily-wechat
         run: python main.py
+
+      - name: 配置 GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: 上传 Pages 工件
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages/
+
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: 部署完成日志
+        run: |
+          echo "✅ 推文页面已部署"
+          echo "📌 访问地址: ${{ steps.deployment.outputs.page_url }}"
+          echo "📌 今日页面: ${{ steps.deployment.outputs.page_url }}daily-$(date -u +%Y-%m-%d).html"
