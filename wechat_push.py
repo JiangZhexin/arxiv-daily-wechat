@@ -46,24 +46,27 @@ class WeChatPusher:
         self._token = data["access_token"]
         return self._token
 
-    def send_template(self, data, max_retries=2):
+    def send_template(self, data, url=None, max_retries=2):
         """
         发送一条模板消息。
 
         参数:
             data: dict，形如 {"first": {"value": "..."}, "keyword1": {"value": "..."}, "remark": {"value": "..."}}
                  注意：key 是模板的真实字段名，请先按 template_fields 映射好。
+            url: 可选，微信消息里点击可跳转的链接（如论文 arxiv 地址）
         """
         token = self.get_access_token()
-        url = f"{SEND_URL}?access_token={token}"
+        send_url = f"{SEND_URL}?access_token={token}"
         body = {
             "touser": self.user_openid,
             "template_id": self.template_id,
             "data": data,
         }
+        if url:
+            body["url"] = url
 
         for attempt in range(max_retries):
-            resp = requests.post(url, json=body, timeout=30)
+            resp = requests.post(send_url, json=body, timeout=30)
             resp.raise_for_status()
             result = resp.json()
             if result.get("errcode") == 0:
@@ -72,7 +75,7 @@ class WeChatPusher:
                 # access_token 过期或无效，清掉重取
                 self._token = None
                 token = self.get_access_token()
-                url = f"{SEND_URL}?access_token={token}"
+                send_url = f"{SEND_URL}?access_token={token}"
                 continue
             raise RuntimeError(f"模板消息发送失败: {result}")
 
@@ -83,12 +86,12 @@ class WeChatPusher:
         发送多条模板消息（论文多时拆分推送）。
 
         参数:
-            messages: list[dict]，每个 dict 是 send_template 的 data
+            messages: list[dict]，每个 dict 形如 {"data": {...}, "url": "可选跳转链接"}
             pause_seconds: 每条之间的间隔秒数
         """
         sent = 0
         for i, msg in enumerate(messages):
-            self.send_template(msg)
+            self.send_template(msg["data"], url=msg.get("url"))
             sent += 1
             if i < len(messages) - 1:
                 time.sleep(pause_seconds)

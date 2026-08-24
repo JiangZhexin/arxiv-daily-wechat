@@ -1,6 +1,6 @@
 # arXiv 每日论文速览 → 微信推送
 
-每天自动抓取 arXiv 上 **微分几何（math.DG）、一般拓扑（math.GN）、几何拓扑（math.GT）** 的新论文，用 **DeepSeek 生成中文标题 + 一句话总结**，通过**微信公众号测试号模板消息**推送到你的微信。
+每天自动抓取 arXiv 上 **微分几何（math.DG）、一般拓扑（math.GN）、几何拓扑（math.GT）** 的新论文，用 **DeepSeek 生成中文标题、一句话总结和中英文摘要**，通过**微信公众号测试号模板消息**推送到你的微信（点击消息可跳转论文原文）。
 
 - 完全免费（GitHub Actions 定时 + DeepSeek 日均约 0.01 元）
 - 不需要服务器、不需要电脑开机
@@ -110,7 +110,7 @@ access_token 失效会自动重试；如果持续失败，检查 `WECHAT_APP_ID`
 arXiv 周六、周日不宣布新论文，属于正常现象。
 
 **Q4：论文太多会刷屏吗？**
-默认单次最多推送 30 篇、每条消息最多 6 篇（约 5 条微信消息）。想改数量：改 `max_papers_per_run` 和 `PAPERS_PER_MESSAGE`。
+默认单次最多推送 8 篇，每篇 1 条消息（每条含一句话总结 + 中英文摘要，可点击跳转论文原文）。想调整：改 `max_papers_per_run`（数量）和 `PAPERS_PER_MESSAGE`（每条几篇）。
 
 **Q5：想换总结语言或模型？**
 `DEEPSEEK_MODEL` 换成 `deepseek-reasoner` 等即可；提示词在 `summarizer.py` 的 `SYSTEM_PROMPT` 里改。

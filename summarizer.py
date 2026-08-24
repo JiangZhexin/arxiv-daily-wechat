@@ -17,11 +17,12 @@ DEFAULT_BASE_URL = "https://api.deepseek.com"
 
 SYSTEM_PROMPT = (
     "你是一名精通微分几何、一般拓扑学与几何拓扑学的科研助理。"
-    "用户会给你一批 arXiv 论文的编号、英文标题和摘要。"
+    "用户会给你一批 arXiv 论文的编号、英文标题和英文摘要。"
     "请为每篇论文输出：1) 中文翻译标题 title_zh；"
-    "2) 一句话中文总结 summary，不超过 60 字，说明论文解决什么问题、核心贡献是什么。"
+    "2) 一句话中文总结 summary，不超过 60 字，说明论文解决什么问题、核心贡献是什么；"
+    "3) 摘要的中文翻译 abstract_zh，忠实翻译英文摘要，尽量完整但不超过 250 字，保留数学专业术语。"
     "不要输出任何多余文字，严格返回 JSON："
-    '{"papers": [{"id": "论文编号", "title_zh": "中文标题", "summary": "一句话总结"}]}'
+    '{"papers": [{"id": "论文编号", "title_zh": "中文标题", "summary": "一句话总结", "abstract_zh": "中文摘要翻译"}]}'
 )
 
 USER_TEMPLATE = (
@@ -65,7 +66,7 @@ def summarize_papers(papers, api_key, base_url=None, model="deepseek-chat", batc
         batch_size: 每批论文数，默认 20
 
     返回:
-        dict: {论文id: {"title_zh": ..., "summary": ...}}
+        dict: {论文id: {"title_zh": ..., "summary": ..., "abstract_zh": ...}}
         失败的单篇不会被加入结果（不影响其他篇）。
     """
     base_url = base_url or DEFAULT_BASE_URL
@@ -101,6 +102,7 @@ def summarize_papers(papers, api_key, base_url=None, model="deepseek-chat", batc
                 results[pid] = {
                     "title_zh": item["title_zh"],
                     "summary": str(item.get("summary", "")),
+                    "abstract_zh": str(item.get("abstract_zh", "")),
                 }
 
     return results
