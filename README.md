@@ -194,6 +194,15 @@ arXiv 周六、周日不发布新论文，属正常现象；周一早上也会�
 - 微信公众号测试号：免费，无条数限制
 - GitHub Pages：免费
 
+## 参考与致谢
+
+本项目在设计与实现过程中参考了以下社区项目（思路参考，代码为独立编写）：
+
+- [AIForerunner/daily-arXiv-ai-enhanced](https://github.com/AIForerunner/daily-arXiv-ai-enhanced) —— 采用 GitHub Actions + DeepSeek 做 arXiv 每日论文抓取与 AI 总结的思路
+- [dw-dengwei/daily-arXiv-ai-enhanced](https://github.com/dw-dengwei/daily-arXiv-ai-enhanced) —— 上述项目所 fork 的原始仓库
+
+感谢这些开源作者的分享。本项目在此基础上改为**微信公众号测试号推送 + GitHub Pages 网页推文**的形态。
+
 ## License
 
 本项目使用 [MIT License](LICENSE) 开源，欢迎自由使用、修改和分发。
