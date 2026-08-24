@@ -46,8 +46,11 @@ DEFAULT_MESSAGE_MODE = "digest"
 
 # 详细模式：每条消息 1 篇（中英文摘要完整展示）
 DETAILED_PAPERS_PER_MESSAGE = 1
-# 速览模式：每条消息最多几篇
-DIGEST_PAPERS_PER_MESSAGE = 6
+# 速览模式：每个分区消息里最多列几篇论文（微信单条消息长度有限）
+PAPERS_PER_SECTION = 5
+
+# arXiv 分区浏览页（速览消息点击跳转用）
+SECTION_LIST_URL = "https://arxiv.org/list/{cat}/recent"
 
 # 分类中文名，用于消息里展示
 CATEGORY_NAMES = {
@@ -125,20 +128,30 @@ def _category_label(primary: str) -> str:
     return CATEGORY_NAMES.get(primary, primary)
 
 
+def _assign_section(p, categories):
+    """
+    确定一篇论文归属哪个目标分区：
+    主分类是目标分区 → 用主分类；否则用第一个命中的目标分类标签。
+    """
+    if p["primary"] in categories:
+        return p["primary"]
+    for c in p["categories"]:
+        if c in categories:
+            return c
+    return p["primary"]
+
+
 def build_messages(papers, summaries, template_fields, categories, date_str, mode=DEFAULT_MESSAGE_MODE):
     """
     把论文列表 + 总结整理成模板消息。
 
-    mode="digest"   ：速览模式，每条消息含多篇论文（编号+中文标题+一句话总结）
+    mode="digest"   ：速览模式（默认），按分区归组去重，每个分区一条消息（编号+中文标题+一句话总结）
     mode="detailed" ：详细模式，每篇 1 条消息，含一句话总结 + 中英文摘要，可点击跳转原文
 
     返回: list[dict]，每个 dict:
-        {"data": {模板字段: {...}}, "url": "论文 arxiv 链接（可选）"}
+        {"data": {模板字段: {...}}, "url": "点击消息跳转的链接（可选）"}
     """
     category_text = "、".join(_category_label(c) for c in categories)
-    first_text = "📚 arXiv 每日论文速览"
-    keyword1_text = category_text
-    keyword2_text = f"今日新增 {len(papers)} 篇"
     keyword3_text = date_str
 
     f, k1, k2, k3, r = (
@@ -149,7 +162,7 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
         template_fields["remark"],
     )
 
-    def _base_data(remark_text):
+    def _base_data(remark_text, first_text, keyword1_text, keyword2_text):
         return {
             f: {"value": first_text},
             k1: {"value": keyword1_text},
@@ -165,6 +178,9 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
 
     if mode == "detailed":
         # ---------- 详细模式：每篇 1 条，含中英文摘要 ----------
+        first_text = "📚 arXiv 每日论文速览"
+        keyword1_text = category_text
+        keyword2_text = f"今日新增 {len(papers)} 篇"
         for p in papers:
             info = summaries.get(p["id"], {})
             title_zh = info.get("title_zh") or p["title"]
@@ -181,23 +197,47 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
             )
             if len(remark_text) > 600:
                 remark_text = _cut(remark_text, 590)
-            messages.append({"data": _base_data(remark_text), "url": p["url"]})
+            messages.append({"data": _base_data(remark_text, first_text, keyword1_text, keyword2_text), "url": p["url"]})
         return messages
 
-    # ---------- 速览模式（默认）：每条消息多篇论文 ----------
-    for i in range(0, len(papers), DIGEST_PAPERS_PER_MESSAGE):
-        chunk = papers[i : i + DIGEST_PAPERS_PER_MESSAGE]
+    # ---------- 速览模式（默认）：按分区归组，每个分区一条消息 ----------
+    # 先按分区归类（跨分区重复的论文只归到一个分区）
+    sections = {c: [] for c in categories}
+    for p in papers:
+        sec = _assign_section(p, categories)
+        sections.setdefault(sec, []).append(p)
+
+    for sec, sec_papers in sections.items():
+        if not sec_papers:
+            continue  # 该分区今天没有论文，不发送
+        sec_label = _category_label(sec)
+        first_text = f"📚 arXiv · {sec_label} 今日速览"
+        keyword1_text = sec_label
+        keyword2_text = f"本区 {len(sec_papers)} 篇"
+        keyword3_text = date_str
+
         lines = []
-        for p in chunk:
+        shown = 0
+        for p in sec_papers:
+            if shown >= PAPERS_PER_SECTION:
+                break
             info = summaries.get(p["id"], {})
             title_zh = info.get("title_zh") or p["title"]
             one_line = info.get("summary") or "（未生成总结）"
-            label = _category_label(p["primary"])
-            lines.append(f"[{p['id']}] {title_zh}（{label}）\n{one_line}")
+            lines.append(f"[{p['id']}] {title_zh}\n{one_line}")
+            shown += 1
+        if len(sec_papers) > shown:
+            lines.append(f"\n…本区共 {len(sec_papers)} 篇，更多请点上方查看 arXiv 列表")
         remark_text = "\n\n".join(lines)
         if len(remark_text) > 600:
             remark_text = _cut(remark_text, 590)
-        messages.append({"data": _base_data(remark_text), "url": None})
+
+        messages.append(
+            {
+                "data": _base_data(remark_text, first_text, keyword1_text, keyword2_text),
+                "url": SECTION_LIST_URL.format(cat=sec),
+            }
+        )
 
     return messages
 
@@ -244,8 +284,10 @@ def main():
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     mode = wx_cfg.get("mode", DEFAULT_MESSAGE_MODE)
     messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, mode=mode)
-    per_msg = DIGEST_PAPERS_PER_MESSAGE if mode == "digest" else DETAILED_PAPERS_PER_MESSAGE
-    print(f"[3/3] 模式={mode}，共组织 {len(messages)} 条微信模板消息（每条最多 {per_msg} 篇论文）")
+    if mode == "digest":
+        print(f"[3/3] 模式=按分区速览，共组织 {len(messages)} 条微信模板消息（每个分区 1 条）")
+    else:
+        print(f"[3/3] 模式=详细，共组织 {len(messages)} 条微信模板消息（每篇 1 条）")
 
     if args.dry_run:
         print("\n================  dry-run 预览 ================")
