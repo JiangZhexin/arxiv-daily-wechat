@@ -1,0 +1,26 @@
+{
+  "arxiv": {
+    "categories": ["math.DG", "math.GN", "math.GT"],
+    "hours_back": 60,
+    "max_results": 300,
+    "max_papers_per_run": 30
+  },
+  "deepseek": {
+    "api_key": "sk-你的DeepSeek密钥",
+    "base_url": "https://api.deepseek.com",
+    "model": "deepseek-chat"
+  },
+  "wechat": {
+    "app_id": "wx开头的测试号AppID",
+    "app_secret": "测试号AppSecret",
+    "template_id": "测试号后台添加的模板ID",
+    "user_openid": "扫码关注测试号后显示的OpenID",
+    "template_fields": {
+      "first": "first",
+      "keyword1": "keyword1",
+      "keyword2": "keyword2",
+      "keyword3": "keyword3",
+      "remark": "remark"
+    }
+  }
+}

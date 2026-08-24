@@ -1,0 +1,39 @@
+name: arxiv-daily-wechat
+
+# 触发方式：
+#   schedule  -> 每天 UTC 01:30（北京时间 09:30）自动运行一次
+#   workflow_dispatch -> 也可以在 Actions 页面手动点击「Run workflow」测试
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  daily-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: 安装依赖
+        run: pip install -r requirements.txt
+
+      - name: 抓取 arXiv 并推送微信
+        env:
+          # ---------- Secrets（在仓库 Settings → Secrets and variables → Actions → Secrets 中配置）----------
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}   # 可不填，默认 https://api.deepseek.com
+          WECHAT_APP_ID: ${{ secrets.WECHAT_APP_ID }}
+          WECHAT_APP_SECRET: ${{ secrets.WECHAT_APP_SECRET }}
+          WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
+          WECHAT_OPENID: ${{ secrets.WECHAT_OPENID }}
+          # ---------- Variables（在 Settings → Secrets and variables → Actions → Variables 中配置）----------
+          ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}   # 如 "math.DG,math.GN,math.GT"
+          DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}       # 如 deepseek-chat
+        run: python main.py

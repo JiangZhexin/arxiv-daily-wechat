@@ -1,0 +1,8 @@
+# 本地配置（含密钥），禁止提交到 GitHub
+config.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
