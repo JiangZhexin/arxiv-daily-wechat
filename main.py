@@ -99,7 +99,15 @@ def load_config():
         "template_fields": fields,
     }
 
-    return {"arxiv": {"categories": categories, "hours_back": hours_back}, "deepseek": deepseek, "wechat": wechat}
+    return {
+        "arxiv": {
+            "categories": categories,
+            "hours_back": hours_back,
+            "max_papers_per_run": max_papers_per_run,
+        },
+        "deepseek": deepseek,
+        "wechat": wechat,
+    }
 
 
 def _category_label(primary: str) -> str:
@@ -188,9 +196,9 @@ def main():
     print(f"      共抓到 {len(papers)} 篇")
 
     # 单次最多推送 max_papers_per_run 篇，防止论文特别多时微信刷屏
-    if len(papers) > max_papers_per_run:
-        print(f"      [提示] 论文较多，本次仅推送最新的 {max_papers_per_run} 篇（可调大 max_papers_per_run）")
-        papers = papers[:max_papers_per_run]
+    if len(papers) > arxiv_cfg["max_papers_per_run"]:
+        print(f"      [提示] 论文较多，本次仅推送最新的 {arxiv_cfg['max_papers_per_run']} 篇（可调大 max_papers_per_run）")
+        papers = papers[: arxiv_cfg["max_papers_per_run"]]
 
     if not papers:
         print("[完成] 今天没有新论文，不推送。")
