@@ -33,7 +33,7 @@ def _parse_published(raw: str):
 
 def fetch_new_papers(
     categories,
-    hours_back: int = 60,
+    hours_back: int = 30,
     max_results: int = 300,
     retries: int = 3,
 ):
@@ -43,8 +43,8 @@ def fetch_new_papers(
     参数:
         categories: 分类列表，如 ["math.DG", "math.GN", "math.GT"]
         hours_back: 只看最近多少小时内发布的论文。
-                    注意 arXiv 周末不宣布新论文，默认 60 小时（约 2.5 天），
-                    这样即使某天任务延迟或错过，也能兜底补上上一批。
+                    默认 30 小时：每天固定时间跑一次时，正好覆盖最近一次发布，
+                    不会重复推送前一天的论文（arXiv 周末不发布，周一早上为 0 篇属正常）。
         max_results: 最多向 API 拉取多少条（再按时间过滤）
         retries: API 请求失败时的重试次数
 
