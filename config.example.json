@@ -1,6 +1,6 @@
 {
   "arxiv": {
-    "categories": ["math.DG", "math.GN", "math.GT"],
+    "categories": ["math.DG", "math.GN", "math.GT", "math.GR", "math.MG", "math.NT"],
     "hours_back": 60,
     "max_results": 300,
     "max_papers_per_run": 8

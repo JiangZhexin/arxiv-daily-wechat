@@ -34,6 +34,6 @@ jobs:
           WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
           WECHAT_OPENID: ${{ secrets.WECHAT_OPENID }}
           # ---------- Variables（在 Settings → Secrets and variables → Actions → Variables 中配置）----------
-          ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}   # 如 "math.DG,math.GN,math.GT"
+          ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}   # 如 "math.DG,math.GN,math.GT,math.GR,math.MG,math.NT"
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}       # 如 deepseek-chat
         run: python main.py

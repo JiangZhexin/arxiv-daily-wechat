@@ -47,7 +47,13 @@ CATEGORY_NAMES = {
     "math.DG": "微分几何",
     "math.GN": "一般拓扑",
     "math.GT": "几何拓扑",
+    "math.GR": "群论",
+    "math.MG": "度量几何",
+    "math.NT": "数论",
 }
+
+# 默认抓取的 arXiv 分类（按需增删）
+DEFAULT_CATEGORIES = ["math.DG", "math.GN", "math.GT", "math.GR", "math.MG", "math.NT"]
 
 
 def _utf8():
@@ -70,7 +76,7 @@ def load_config():
     categories = (
         [c.strip() for c in categories_env.split(",") if c.strip()]
         if categories_env
-        else arxiv_cfg.get("categories", ["math.DG", "math.GN", "math.GT"])
+        else arxiv_cfg.get("categories", DEFAULT_CATEGORIES)
     )
     hours_back = int(os.environ.get("ARXIV_HOURS_BACK") or arxiv_cfg.get("hours_back", 60))
     max_papers_per_run = int(os.environ.get("ARXIV_MAX_PAPERS") or arxiv_cfg.get("max_papers_per_run", 8))
