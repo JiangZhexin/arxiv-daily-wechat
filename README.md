@@ -151,7 +151,56 @@ python main.py                # 正式运行（本地跑需要配置环境变量
 DEEPSEEK_API_KEY=sk-xxx WECHAT_APP_ID=wx... python main.py --dry-run
 ```
 
-## 四、常见问题
+## 四、如何修改抓取的分区（分类）
+
+系统默认抓取 6 个数学分区。改分区有**两种方法**，推荐方法一（不用动代码）。
+
+### 方法一：在 GitHub Variables 里改（推荐，不用改代码）
+
+仓库 → **Settings → Secrets and variables → Actions → Variables** → 编辑 `ARXIV_CATEGORIES`，填你要的分区代码，**逗号分隔**，例如：
+
+```
+math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
+```
+
+改完点 **Run workflow** 即可生效。
+
+### 方法二：改代码默认值
+
+编辑 `main.py` 顶部的 `DEFAULT_CATEGORIES`（和 `page_builder.py` 一样维护一份），提交后自动生效。
+
+### 常用 arXiv 数学分区代码
+
+| 代码 | 名称 | 代码 | 名称 |
+|---|---|---|---|
+| `math.DG` | 微分几何 | `math.GR` | 群论 |
+| `math.GN` | 一般拓扑 | `math.MG` | 度量几何 |
+| `math.GT` | 几何拓扑 | `math.NT` | 数论 |
+| `math.AP` | 分析学 | `math.AG` | 代数几何 |
+| `math.AT` | 代数拓扑 | `math.AC` | 交换代数 |
+| `math.CO` | 组合数学 | `math.CV` | 复分析 |
+| `math.FA` | 泛函分析 | `math.LO` | 数理逻辑 |
+| `math.OA` | 算子代数 | `math.PR` | 概率论 |
+| `math.RT` | 表示论 | `math.SG` | 辛几何 |
+| `math.SP` | 谱理论 | `math.ST` | 统计理论 |
+
+完整列表见 [arXiv 分类大全](https://arxiv.org/category_taxonomy)。
+
+### ⚠️ 重要：新增分区后如何显示中文名
+
+- 直接用方法一改变量**立刻能用**，但新分区在消息/网页里会显示**英文代码**（如 `math.AP`）。
+- 想要中文名：在 `main.py` 和 `page_builder.py` 两个文件的 `CATEGORY_NAMES` 字典里各加一行，例如：
+  ```python
+  "math.AP": "分析学",
+  ```
+  提交 push 后再 Run workflow 即可。
+
+### 其他相关设置
+
+- `ARXIV_HOURS_BACK`：回看最近多少小时的论文（默认 30；临时想看历史可调大到 120）
+- `ARXIV_MAX_PAPERS`：单次最多推送多少篇（默认 30）
+
+## 五、常见问题
 
 **Q1：微信收到消息但字段显示空白/错位？**
 不同模板的字段名可能不同。确保模板内容用的是 `{{first.DATA}}`、`{{keyword1.DATA}}`…`{{remark.DATA}}` 这套命名；如果你自定义了字段名，把对应关系填到 `config.json` 的 `template_fields` 映射里（或改 `main.py` 的 `DEFAULT_TEMPLATE_FIELDS`）。
@@ -174,7 +223,7 @@ arXiv 周六、周日不发布新论文，属正常现象；周一早上也会�
 **Q7：历史页面怎么保留？**
 每天生成的 `daily-YYYY-MM-DD.html` 会提交回仓库（工作流自动完成），网页顶部有"📅 历史速览"入口可回看。
 
-## 五、隐私与公开说明（重要，请 copy/fork 本项目的同学阅读）
+## 六、隐私与公开说明（重要，请 copy/fork 本项目的同学阅读）
 
 > ⚠️ 这个项目默认是 **Public（公开）仓库 + GitHub Pages 公开网页**，请知悉以下情况：
 
