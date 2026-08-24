@@ -59,6 +59,13 @@ li { margin-bottom: 18px; }
 .en-title { color: #888; font-size: 0.88em; font-style: italic; margin: 2px 0; }
 .link { font-size: 0.85em; color: #888; word-break: break-all; }
 .link a { color: #06c; }
+details { margin: 4px 0; }
+details summary { cursor: pointer; color: #555; font-size: 0.92em; margin-top: 2px; }
+details p { margin: 6px 0 8px; color: #444; font-size: 0.93em; }
+.ai-line { color: #444; font-size: 0.95em; margin: 2px 0; }
+.history { margin-bottom: 16px; font-size: 0.9em; color: #555; line-height: 1.9; }
+.history a { color: #06c; margin-right: 10px; text-decoration: none; }
+.history a:hover { text-decoration: underline; }
 footer { color: #aaa; font-size: 0.85em; text-align: center; margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; }
 """
 
@@ -67,8 +74,11 @@ def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_daily_html(papers, summaries, categories, date_str, base_url="https://arxiv.org/abs/"):
-    """生成完整的每日论文 HTML 页面字符串。"""
+def build_daily_html(papers, summaries, categories, date_str, base_url="https://arxiv.org/abs/", history_links=None):
+    """生成完整的每日论文 HTML 页面字符串。
+
+    history_links: 可选，历史页面文件名列表，如 ["daily-2026-08-23.html", ...]，会在顶部显示历史入口。
+    """
     sections = {c: [] for c in categories}
     for p in papers:
         sec = _assign_section(p, categories)
@@ -83,6 +93,11 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
     out.append(f"<style>{_CSS}</style></head><body>")
     out.append(f"<h1>📚 arXiv 每日论文速览 · {date_str}</h1>")
     out.append(f'<div class="meta">共 {len(papers)} 篇论文 · 覆盖 {len(active_sections)} 个分类 · 由 arXiv API + DeepSeek 自动整理</div>')
+
+    # 历史入口
+    if history_links:
+        links = "".join(f'<a href="{h}">{h[6:16]}</a>' for h in history_links)
+        out.append(f'<div class="history">📅 历史速览：{links}</div>')
 
     # 目录
     if active_sections:
@@ -102,16 +117,24 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
             info = summaries.get(p["id"], {})
             title_zh = _escape(info.get("title_zh") or p["title"])
             one_line = _escape(info.get("summary") or "（未生成总结）")
+            ai_summary = _escape(info.get("ai_summary") or "")
+            abstract_zh = _escape(info.get("abstract_zh") or "")
+            abstract_en = _escape(p["summary"])
             en_title = _escape(p["title"])
             arxiv_url = f"{base_url}{p['id']}"
-            out.append(
-                "<li>"
-                f'<div class="title">[<a href="{arxiv_url}" target="_blank" rel="noopener">{p["id"]}</a>] {title_zh}</div>'
-                f'<div class="en-title">{en_title}</div>'
-                f'<div class="summary">💡 {one_line}</div>'
-                f'<div class="link">👉 <a href="{arxiv_url}" target="_blank" rel="noopener">{arxiv_url}</a></div>'
-                "</li>"
-            )
+
+            blocks = [f'<div class="title">[<a href="{arxiv_url}" target="_blank" rel="noopener">{p["id"]}</a>] {title_zh}</div>']
+            blocks.append(f'<div class="en-title">{en_title}</div>')
+            if ai_summary:
+                ai_lines = "".join(f"<div class='ai-line'>• {line}</div>" for line in ai_summary.splitlines() if line.strip())
+                blocks.append(f'<details class="ai"><summary>🤖 AI 总结</summary>{ai_lines}</details>')
+            blocks.append(f'<div class="summary">💡 {one_line}</div>')
+            if abstract_zh:
+                blocks.append(f'<details class="abs-zh"><summary>📖 中文摘要</summary><p>{abstract_zh}</p></details>')
+            if abstract_en:
+                blocks.append(f'<details class="abs-en"><summary>🌐 English Abstract</summary><p>{abstract_en}</p></details>')
+            blocks.append(f'<div class="link">👉 <a href="{arxiv_url}" target="_blank" rel="noopener">{arxiv_url}</a></div>')
+            out.append("<li>" + "".join(blocks) + "</li>")
         out.append("</ol></section>")
 
     out.append('<footer>由 <a href="https://arxiv.org">arXiv</a> API + <a href="https://www.deepseek.com">DeepSeek</a> 自动生成 · 微信公众号测试号推送</footer>')
@@ -120,10 +143,29 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
 
 
 def write_daily_page(papers, summaries, categories, date_str, output_dir="pages", base_url="https://arxiv.org/abs/"):
-    """生成 HTML 文件并写入 output_dir/daily-YYYY-MM-DD.html，返回生成的文件路径。"""
-    html = build_daily_html(papers, summaries, categories, date_str, base_url=base_url)
+    """
+    生成今日 HTML 页面（daily-YYYY-MM-DD.html）和首页（index.html）。
+    首页内容 = 今日页面，并在顶部附历史日期链接（自动扫描 output_dir 里的历史页面）。
+    返回: (daily_path, index_path)
+    """
     os.makedirs(output_dir, exist_ok=True)
-    path = os.path.join(output_dir, f"daily-{date_str}.html")
-    with open(path, "w", encoding="utf-8") as f:
+    import re
+
+    # 扫描历史页面（不含今天）
+    history = sorted(
+        f for f in os.listdir(output_dir)
+        if re.fullmatch(r"daily-\d{4}-\d{2}-\d{2}\.html", f) and f != f"daily-{date_str}.html"
+    )
+    history.reverse()  # 新的在前
+
+    html = build_daily_html(papers, summaries, categories, date_str, base_url=base_url, history_links=history)
+
+    daily_path = os.path.join(output_dir, f"daily-{date_str}.html")
+    with open(daily_path, "w", encoding="utf-8") as f:
         f.write(html)
-    return path
+
+    index_path = os.path.join(output_dir, "index.html")
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    return daily_path, index_path

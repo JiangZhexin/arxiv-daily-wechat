@@ -20,9 +20,10 @@ SYSTEM_PROMPT = (
     "用户会给你一批 arXiv 论文的编号、英文标题和英文摘要。"
     "请为每篇论文输出：1) 中文翻译标题 title_zh；"
     "2) 一句话中文总结 summary，不超过 60 字，说明论文解决什么问题、核心贡献是什么；"
-    "3) 摘要的中文翻译 abstract_zh，忠实翻译英文摘要，尽量完整但不超过 250 字，保留数学专业术语。"
+    "3) 摘要的中文翻译 abstract_zh，忠实翻译英文摘要，尽量完整但不超过 250 字，保留数学专业术语；"
+    "4) 3-5 句 AI 总结 ai_summary，用中文，逐句概括研究问题、方法、主要结果与意义，共 60-150 字，用换行分隔每句。"
     "不要输出任何多余文字，严格返回 JSON："
-    '{"papers": [{"id": "论文编号", "title_zh": "中文标题", "summary": "一句话总结", "abstract_zh": "中文摘要翻译"}]}'
+    '{"papers": [{"id": "论文编号", "title_zh": "中文标题", "summary": "一句话总结", "abstract_zh": "中文摘要翻译", "ai_summary": "3-5句AI总结"}]}'
 )
 
 USER_TEMPLATE = (
@@ -103,6 +104,7 @@ def summarize_papers(papers, api_key, base_url=None, model="deepseek-chat", batc
                     "title_zh": item["title_zh"],
                     "summary": str(item.get("summary", "")),
                     "abstract_zh": str(item.get("abstract_zh", "")),
+                    "ai_summary": str(item.get("ai_summary", "")),
                 }
 
     return results

@@ -11,7 +11,7 @@ on:
 
 # Pages 部署需要的权限
 permissions:
-  contents: read
+  contents: write   # 需要写权限：把每日生成的页面提交回仓库，保留历史
   pages: write
   id-token: write
 
@@ -52,6 +52,19 @@ jobs:
           # 第一次部署后可以从 Actions 日志 / Pages 页面看到完整 URL
           PAGE_BASE_URL: https://jiangzhexin.github.io/arxiv-daily-wechat
         run: python main.py
+
+      - name: 把生成的页面提交回仓库（保留历史页面）
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add -f pages/
+          if git diff --cached --quiet; then
+            echo "页面无变化，跳过提交"
+          else
+            git commit -m "chore: 更新每日 arXiv 速览页面 $(date -u +%Y-%m-%d)"
+            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/JiangZhexin/arxiv-daily-wechat.git" HEAD:main
+            echo "✅ 页面已提交回仓库"
+          fi
 
       - name: 配置 GitHub Pages
         uses: actions/configure-pages@v5

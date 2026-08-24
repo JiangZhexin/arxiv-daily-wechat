@@ -46,8 +46,6 @@ DEFAULT_MESSAGE_MODE = "digest"
 
 # 详细模式：每条消息 1 篇（中英文摘要完整展示）
 DETAILED_PAPERS_PER_MESSAGE = 1
-# 速览模式：每个分区消息里最多列几篇论文（微信单条消息长度有限）
-PAPERS_PER_SECTION = 5
 
 # 分类中文名，用于消息里展示
 CATEGORY_NAMES = {
@@ -200,46 +198,37 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
             messages.append({"data": _base_data(remark_text, first_text, keyword1_text, keyword2_text), "url": p["url"]})
         return messages
 
-    # ---------- 速览模式（默认）：按分区归组，每个分区一条消息 ----------
+    # ---------- 速览模式（默认）：只发 1 条汇总消息，包含各分区统计，点击跳转网页看详情 ----------
     # 先按分区归类（跨分区重复的论文只归到一个分区）
     sections = {c: [] for c in categories}
     for p in papers:
         sec = _assign_section(p, categories)
         sections.setdefault(sec, []).append(p)
 
-    for sec, sec_papers in sections.items():
-        if not sec_papers:
-            continue  # 该分区今天没有论文，不发送
-        sec_label = _category_label(sec)
-        first_text = f"📚 arXiv · {sec_label} 今日速览"
-        keyword1_text = sec_label
-        keyword2_text = f"本区 {len(sec_papers)} 篇"
-        keyword3_text = date_str
+    # 汇总消息：各分区篇数统计
+    lines = []
+    for sec in categories:
+        count = len(sections.get(sec, []))
+        if count:
+            lines.append(f"{_category_label(sec)}：{count} 篇")
+    lines.append("")
+    lines.append("📌 点击消息查看全部论文的 AI 总结、中英文摘要与 arXiv 链接")
 
-        lines = []
-        shown = 0
-        for p in sec_papers:
-            if shown >= PAPERS_PER_SECTION:
-                break
-            info = summaries.get(p["id"], {})
-            title_zh = info.get("title_zh") or p["title"]
-            one_line = info.get("summary") or "（未生成总结）"
-            lines.append(f"[{p['id']}] {title_zh}\n{one_line}")
-            shown += 1
-        if len(sec_papers) > shown:
-            lines.append(f"\n…本区共 {len(sec_papers)} 篇，完整列表见 arxiv.org/list/{sec}/recent")
+    remark_text = "\n".join(lines)
+    if len(remark_text) > 600:
+        remark_text = _cut(remark_text, 590)
 
-        remark_text = "\n\n".join(lines)
-        if len(remark_text) > 600:
-            remark_text = _cut(remark_text, 590)
+    first_text = "📚 arXiv 每日论文速览"
+    keyword1_text = f"共 {len(papers)} 篇"
+    keyword2_text = date_str
+    keyword3_text = "、".join(_category_label(c) for c in categories)
 
-        # 速览消息：若提供了 page_url（GitHub Pages 推文页），点开跳转到网页看详情
-        messages.append(
-            {
-                "data": _base_data(remark_text, first_text, keyword1_text, keyword2_text),
-                "url": page_url,
-            }
-        )
+    messages.append(
+        {
+            "data": _base_data(remark_text, first_text, keyword1_text, keyword2_text),
+            "url": page_url,
+        }
+    )
 
     return messages
 
@@ -292,17 +281,17 @@ def main():
     if page_base_url and not args.dry_run:
         try:
             from page_builder import write_daily_page
-            page_path = write_daily_page(papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages")
-            page_url = page_base_url.rstrip("/") + "/" + os.path.basename(page_path)
-            print(f"      已生成推文页面: {page_path}")
+            daily_path, index_path = write_daily_page(papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages")
+            page_url = page_base_url.rstrip("/") + "/" + os.path.basename(daily_path)
+            print(f"      已生成推文页面: {daily_path} + {index_path}")
         except Exception as exc:
             print(f"  [警告] 生成推文页面失败（不影响微信推送）: {exc}")
             page_url = None
 
     messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, mode=mode, page_url=page_url)
     if mode == "digest":
-        jump_hint = f" → 点击跳转推文页: {page_url}" if page_url else "（卡片内显示论文清单）"
-        print(f"[3/3] 模式=按分区速览，共组织 {len(messages)} 条微信模板消息（每个分区 1 条）{jump_hint}")
+        jump_hint = f" → 点击跳转推文页: {page_url}" if page_url else ""
+        print(f"[3/3] 模式=速览汇总，共 {len(messages)} 条微信消息（1 条汇总，含各分区统计）{jump_hint}")
     else:
         print(f"[3/3] 模式=详细，共组织 {len(messages)} 条微信模板消息（每篇 1 条）")
 
