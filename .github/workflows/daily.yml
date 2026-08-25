@@ -45,7 +45,7 @@ jobs:
           # ---------- Variables ----------
           ARXIV_CATEGORIES: ${{ vars.ARXIV_CATEGORIES }}
           ARXIV_HOURS_BACK: ${{ vars.ARXIV_HOURS_BACK }}
-          ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}
+          ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}   # 详细模式单次最多推送篇数，默认 200
           WECHAT_MODE: ${{ vars.WECHAT_MODE }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
           # GitHub Pages 推文页的根 URL（仓库名固定为 arxiv-daily-wechat）

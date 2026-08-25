@@ -3,7 +3,7 @@
     "categories": ["math.DG", "math.GN", "math.GT", "math.GR", "math.MG", "math.NT"],
     "hours_back": 30,
     "max_results": 300,
-    "max_papers_per_run": 30
+    "max_papers_per_run": 200
   },
   "deepseek": {
     "api_key": "sk-你的DeepSeek密钥",

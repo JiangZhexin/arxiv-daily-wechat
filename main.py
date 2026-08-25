@@ -84,7 +84,7 @@ def load_config():
         else arxiv_cfg.get("categories", DEFAULT_CATEGORIES)
     )
     hours_back = int(os.environ.get("ARXIV_HOURS_BACK") or arxiv_cfg.get("hours_back", 30))
-    max_papers_per_run = int(os.environ.get("ARXIV_MAX_PAPERS") or arxiv_cfg.get("max_papers_per_run", 30))
+    max_papers_per_run = int(os.environ.get("ARXIV_MAX_PAPERS") or arxiv_cfg.get("max_papers_per_run", 200))
 
     ds_cfg = cfg.get("deepseek", {})
     deepseek = {
