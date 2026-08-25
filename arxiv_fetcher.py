@@ -85,6 +85,17 @@ def fetch_new_papers(
         print(f"  [警告] arXiv 返回内容异常（可能被限流）: {resp.text[:300]}")
 
     root = ET.fromstring(resp.text)
+    entries = root.findall("atom:entry", NS)
+
+    # 容错：arXiv 偶发返回 0 条时（网络/限流抖动），等待后重试一次，避免漏推当天论文
+    if not entries:
+        print("  [警告] arXiv 返回 0 条结果，60 秒后重试一次 ...")
+        time.sleep(60)
+        resp = requests.get(url, headers=headers, timeout=60)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.text)
+        entries = root.findall("atom:entry", NS)
+        print(f"  [重试] 二次请求状态={resp.status_code}, 响应 {len(resp.text)} 字符, 结果 {len(entries)} 条")
 
     papers = []
     seen_ids = set()
