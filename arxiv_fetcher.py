@@ -64,17 +64,25 @@ def fetch_new_papers(
     url = f"{ARXIV_API_URL}?{urllib.parse.urlencode(params)}"
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours_back)
 
+    # arXiv 官方要求提供 User-Agent，否则可能被限流/拒绝
+    headers = {"User-Agent": "arxiv-daily-wechat/1.0 (arXiv daily digest; contact: github.com/JiangZhexin/arxiv-daily-wechat)"}
+
     # 请求 arXiv API，失败自动重试
     resp = None
     for attempt in range(retries):
         try:
-            resp = requests.get(url, timeout=60)
+            resp = requests.get(url, headers=headers, timeout=60)
             resp.raise_for_status()
             break
         except requests.RequestException as exc:
             if attempt == retries - 1:
                 raise RuntimeError(f"arXiv API 请求失败: {exc}") from exc
             time.sleep(5 * (attempt + 1))
+
+    # 诊断日志：便于排查"抓到 0 篇"问题
+    print(f"  [调试] arXiv API 状态={resp.status_code}, 响应 {len(resp.text)} 字符, 窗口={hours_back}h")
+    if "opensearch:totalResults" not in resp.text:
+        print(f"  [警告] arXiv 返回内容异常（可能被限流）: {resp.text[:300]}")
 
     root = ET.fromstring(resp.text)
 
