@@ -66,6 +66,11 @@ details p { margin: 6px 0 8px; color: #444; font-size: 0.93em; }
 .history { margin-bottom: 16px; font-size: 0.9em; color: #555; line-height: 1.9; }
 .history a { color: #06c; margin-right: 10px; text-decoration: none; }
 .history a:hover { text-decoration: underline; }
+.index-list { list-style: none; padding: 0; }
+.index-list li { margin-bottom: 8px; }
+.index-list a { display: inline-block; padding: 10px 16px; background: #fff; border: 1px solid #e0e0e0;
+                border-radius: 8px; color: #06c; text-decoration: none; font-size: 1.05em; width: 100%; box-sizing: border-box; }
+.index-list a:hover { background: #eef3f8; border-color: #06c; }
 footer { color: #aaa; font-size: 0.85em; text-align: center; margin-top: 40px; padding-top: 16px; border-top: 1px solid #ddd; }
 """
 
@@ -97,7 +102,9 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
     # 历史入口
     if history_links:
         links = "".join(f'<a href="{h}">{h[6:16]}</a>' for h in history_links)
-        out.append(f'<div class="history">📅 历史速览：{links}</div>')
+        out.append(f'<div class="history">🏠 <a href="index.html">返回总目录</a> · 📅 历史：{links}</div>')
+    else:
+        out.append(f'<div class="history">🏠 <a href="index.html">返回总目录</a></div>')
 
     # 目录
     if active_sections:
@@ -144,8 +151,8 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
 
 def write_daily_page(papers, summaries, categories, date_str, output_dir="pages", base_url="https://arxiv.org/abs/"):
     """
-    生成今日 HTML 页面（daily-YYYY-MM-DD.html）和首页（index.html）。
-    首页内容 = 今日页面，并在顶部附历史日期链接（自动扫描 output_dir 里的历史页面）。
+    生成今日 HTML 页面（daily-YYYY-MM-DD.html）和总目录首页（index.html）。
+    index.html 是所有日期论文速览的索引汇总页（点击日期进入当天详情）。
     返回: (daily_path, index_path)
     """
     os.makedirs(output_dir, exist_ok=True)
@@ -164,8 +171,50 @@ def write_daily_page(papers, summaries, categories, date_str, output_dir="pages"
     with open(daily_path, "w", encoding="utf-8") as f:
         f.write(html)
 
+    # 生成总目录索引页（列出所有日期，附当天论文篇数）
+    index_html = build_index_html(output_dir)
     index_path = os.path.join(output_dir, "index.html")
     with open(index_path, "w", encoding="utf-8") as f:
-        f.write(html)
+        f.write(index_html)
 
     return daily_path, index_path
+
+
+def build_index_html(output_dir="pages"):
+    """生成总目录索引页：列出 output_dir 里所有 daily-YYYY-MM-DD.html（新的在前），附当天论文篇数。"""
+    import re
+
+    files = sorted(
+        f for f in os.listdir(output_dir)
+        if re.fullmatch(r"daily-\d{4}-\d{2}-\d{2}\.html", f)
+    )
+    files.reverse()  # 新的在前
+
+    items = []
+    for f in files:
+        date = f[6:16]
+        count = None
+        try:
+            with open(os.path.join(output_dir, f), encoding="utf-8") as fh:
+                content = fh.read()
+            m = re.search(r"共 (\d+) 篇论文", content)
+            count = m.group(1) if m else None
+        except OSError:
+            count = None
+        label = f"{date}（{count} 篇）" if count else date
+        items.append(f'<li><a href="{f}">📅 {label}</a></li>')
+
+    if not items:
+        items.append("<li>暂无每日速览，等下次抓取后生成。</li>")
+
+    out = []
+    out.append('<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8">')
+    out.append('<meta name="viewport" content="width=device-width,initial-scale=1">')
+    out.append("<title>arXiv 每日论文速览 · 总目录</title>")
+    out.append(f"<style>{_CSS}</style></head><body>")
+    out.append("<h1>📚 arXiv 每日论文速览 · 总目录</h1>")
+    out.append('<div class="meta">按日期浏览每天的论文速览 · 自动生成，每日更新</div>')
+    out.append("<ul class='index-list'>" + "".join(items) + "</ul>")
+    out.append('<footer>由 <a href="https://arxiv.org">arXiv</a> API + <a href="https://www.deepseek.com">DeepSeek</a> 自动生成 · 微信公众号测试号推送</footer>')
+    out.append("</body></html>")
+    return "\n".join(out)

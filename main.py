@@ -257,16 +257,11 @@ def main():
         papers = papers[: args.max_papers]
     print(f"      共抓到 {len(papers)} 篇")
 
-    # 单次最多推送 max_papers_per_run 篇，防止论文特别多时微信刷屏
-    if len(papers) > arxiv_cfg["max_papers_per_run"]:
-        print(f"      [提示] 论文较多，本次仅推送最新的 {arxiv_cfg['max_papers_per_run']} 篇（可调大 max_papers_per_run）")
-        papers = papers[: arxiv_cfg["max_papers_per_run"]]
-
     if not papers:
         print("[完成] 今天没有新论文，不推送。")
         return
 
-    # 2) 总结
+    # 2) 总结（全量论文都总结，网页需要全部）
     print(f"[2/3] 调用 DeepSeek（{ds_cfg['model']}）生成中文总结 ...")
     summaries = summarize_papers(papers, api_key=ds_cfg["api_key"], base_url=ds_cfg["base_url"], model=ds_cfg["model"])
     print(f"      成功总结 {len(summaries)}/{len(papers)} 篇")
@@ -275,13 +270,21 @@ def main():
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     mode = wx_cfg.get("mode", DEFAULT_MESSAGE_MODE)
 
+    # 单次最多推送篇数：仅详细模式（每篇 1 条消息）时限制论文数，防止微信刷屏；
+    # 速览汇总模式（digest）微信只发 1 条统计消息，不截断，网页显示全部论文
+    all_papers = papers
+    if mode == "detailed" and len(papers) > arxiv_cfg["max_papers_per_run"]:
+        print(f"      [提示] 论文较多，详细模式本次仅推送最新的 {arxiv_cfg['max_papers_per_run']} 篇（可调大 max_papers_per_run）")
+        papers = papers[: arxiv_cfg["max_papers_per_run"]]
+
     # 若配置了 PAGE_BASE_URL（GitHub Pages 推文页地址），先生成页面文件并拼出 url
+    # 页面用全部论文（all_papers），微信详细模式才截断
     page_base_url = os.environ.get("PAGE_BASE_URL", "").strip()
     page_url = None
     if page_base_url and not args.dry_run:
         try:
             from page_builder import write_daily_page
-            daily_path, index_path = write_daily_page(papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages")
+            daily_path, index_path = write_daily_page(all_papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages")
             page_url = page_base_url.rstrip("/") + "/" + os.path.basename(daily_path)
             print(f"      已生成推文页面: {daily_path} + {index_path}")
         except Exception as exc:
