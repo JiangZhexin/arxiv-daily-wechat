@@ -60,6 +60,25 @@ CATEGORY_NAMES = {
 # 默认抓取的 arXiv 分类（按需增删）
 DEFAULT_CATEGORIES = ["math.DG", "math.GN", "math.GT", "math.GR", "math.MG", "math.NT"]
 
+# 已推送论文记录（防止窗口扩大后重复推送；由 workflow 提交回仓库保留）
+STATE_FILE = "last_pushed.json"
+
+
+def _load_pushed_ids():
+    """读取已推送的论文 id 集合。文件不存在或损坏时返回空集合。"""
+    try:
+        with open(STATE_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        return set(str(x) for x in data.get("ids", []))
+    except (OSError, ValueError):
+        return set()
+
+
+def _save_pushed_ids(ids):
+    """把已推送论文 id 集合写入状态文件。"""
+    with open(STATE_FILE, "w", encoding="utf-8") as f:
+        json.dump({"ids": sorted(ids)}, f, ensure_ascii=False)
+
 
 def _utf8():
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
@@ -255,13 +274,30 @@ def main():
     papers = fetch_new_papers(arxiv_cfg["categories"], hours_back=arxiv_cfg["hours_back"])
     if args.max_papers > 0:
         papers = papers[: args.max_papers]
+
+    # 兼容 arXiv API 对当天新论文的索引延迟：小窗口 0 篇时，自动扩大到 72 小时重查
+    if not papers:
+        print("      [提示] 当前窗口无结果（arXiv 索引可能有延迟），扩大到 72 小时重查 ...")
+        papers = fetch_new_papers(arxiv_cfg["categories"], hours_back=72)
+        if args.max_papers > 0:
+            papers = papers[: args.max_papers]
     print(f"      共抓到 {len(papers)} 篇")
 
     if not papers:
         print("[完成] 今天没有新论文，不推送。")
         return
 
-    # 2) 总结（全量论文都总结，网页需要全部）
+    # 2) 去重：过滤掉已推送过的论文（记录在 last_pushed.json，随仓库提交保留）
+    pushed_ids = _load_pushed_ids()
+    new_papers = [p for p in papers if p["id"] not in pushed_ids]
+    if not new_papers:
+        print(f"[完成] 没有新论文（窗口内 {len(papers)} 篇均已推送过），不重复推送。")
+        return
+    if len(new_papers) < len(papers):
+        print(f"      [去重] 已推送过 {len(papers) - len(new_papers)} 篇，本次实际新增 {len(new_papers)} 篇")
+    papers = new_papers
+
+    # 3) 总结（全量论文都总结，网页需要全部）
     print(f"[2/3] 调用 DeepSeek（{ds_cfg['model']}）生成中文总结 ...")
     summaries = summarize_papers(papers, api_key=ds_cfg["api_key"], base_url=ds_cfg["base_url"], model=ds_cfg["model"])
     print(f"      成功总结 {len(summaries)}/{len(papers)} 篇")
@@ -312,6 +348,10 @@ def main():
     pusher = WeChatPusher(wx_cfg["app_id"], wx_cfg["app_secret"], wx_cfg["template_id"], wx_cfg["user_openid"])
     sent = pusher.send_batch(messages)
     print(f"[完成] 已发送 {sent} 条消息到微信，公众号: 测试号")
+
+    # 5) 记录本次已推送的论文 id（去重）
+    _save_pushed_ids(pushed_ids | {p["id"] for p in papers})
+    print(f"      [去重] 已记录 {len(papers)} 篇到 last_pushed.json，共累计 {len(pushed_ids | {p['id'] for p in papers})} 篇")
 
 
 if __name__ == "__main__":

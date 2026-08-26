@@ -9,3 +9,5 @@ venv/
 
 # 每日生成的 GitHub Pages 推文页（不入库，由 workflow 上传到 Pages）
 pages/
+# 已推送论文记录（本地不提交，由 workflow 用 git add -f 强制提交回仓库）
+last_pushed.json
