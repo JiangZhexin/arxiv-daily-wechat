@@ -1,12 +1,14 @@
 name: arxiv-daily-wechat
 
 # 触发方式：
-#   schedule  -> 每天 UTC 23:30（北京时间次日 07:30）自动运行一次
-#                （arXiv 新论文在北京时间凌晨 2-3 点发布，早上 7:30 跑正好覆盖）
+#   schedule  -> 每天两次自动运行（若早上已推送，中午那次会被去重机制跳过，不会重复）：
+#                ① UTC 23:30 = 北京时间 07:30（arXiv 新论文在北京时间凌晨 2-3 点发布）
+#                ② UTC 04:30 = 北京时间 12:30（兜底：arXiv API 索引延迟导致早上 0 篇时，中午补推）
 #   workflow_dispatch -> 也可以在 Actions 页面手动点击「Run workflow」测试
 on:
   schedule:
     - cron: "30 23 * * *"
+    - cron: "30 4 * * *"
   workflow_dispatch:
 
 # Pages 部署需要的权限
