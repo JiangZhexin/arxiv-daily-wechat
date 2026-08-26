@@ -37,7 +37,7 @@
 ```
 arxiv-daily-wechat/
 ├── main.py                  # 主流程：抓取 → 总结 → 生成网页 → 推送
-├── arxiv_fetcher.py         # arXiv API 抓取（分类可配置）
+├── arxiv_fetcher.py         # arXiv RSS 抓取（与网页实时同步，无索引延迟）
 ├── summarizer.py            # DeepSeek 批量生成中文标题/总结/AI总结/摘要翻译
 ├── page_builder.py          # 生成每日 HTML 推文页（含历史索引）
 ├── wechat_push.py           # 微信公众号测试号模板消息推送
