@@ -113,7 +113,7 @@ git push -u origin main
 |---|---|---|
 | `ARXIV_CATEGORIES` | `math.DG,math.GN,math.GT,math.GR,math.MG,math.NT` | 抓哪些分类 |
 | `ARXIV_HOURS_BACK` | `30` | 回看最近多少小时的论文（临时想看历史可调大，如 `120`） |
-| `ARXIV_MAX_PAPERS` | `30` | 单次最多推送多少篇 |
+| `ARXIV_MAX_PAPERS` | `200` | 详细模式单次最多推送多少篇 |
 | `WECHAT_MODE` | `digest` | `digest`=每天 1 条汇总；`detailed`=每篇 1 条含中英文摘要 |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | 使用的模型 |
 
@@ -198,7 +198,7 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 ### 其他相关设置
 
 - `ARXIV_HOURS_BACK`：回看最近多少小时的论文（默认 30；临时想看历史可调大到 120）
-- `ARXIV_MAX_PAPERS`：单次最多推送多少篇（默认 30）
+- `ARXIV_MAX_PAPERS`：详细模式单次最多推送多少篇（默认 200）
 
 ## 五、常见问题
 
@@ -222,6 +222,12 @@ arXiv 周六、周日不发布新论文，属正常现象；周一早上也会�
 
 **Q7：历史页面怎么保留？**
 每天生成的 `daily-YYYY-MM-DD.html` 会提交回仓库（工作流自动完成），网页顶部有"📅 历史速览"入口可回看。
+
+**Q8：推送的论文数量和 arXiv 网页上对不上？**
+本项目通过 **arXiv RSS 订阅源**实时抓取（与网页公告列表同步，无搜索 API 的索引延迟），并按"最近一次公告"合并去重。注意：arXiv 网页的 `recent` 页面显示的是**最近多个工作日的累计**（如某天 19 篇可能是好几天总和），而本项目每天推送的是**最近一次公告的新论文**；同时 `last_pushed.json` 会过滤掉已推送过的论文，避免重复。如果你在网页上看到多天的论文，而推送只包含当天新增，这是正常行为。
+
+**Q9：会不会重复推送？**
+不会。每次推送的论文 ID 都会记录到 `last_pushed.json`（由工作流自动提交回仓库），下次运行自动过滤掉已推送的论文。早上 7:30 推送成功后，12:30 的兜底运行会检测到"没有新论文"并自动跳过。
 
 ## 六、隐私与公开说明（重要，请 copy/fork 本项目的同学阅读）
 
