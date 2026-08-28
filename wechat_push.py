@@ -18,6 +18,55 @@ import requests
 
 TOKEN_URL = "https://api.weixin.qq.com/cgi-bin/token"
 SEND_URL = "https://api.weixin.qq.com/cgi-bin/message/template/send"
+PUSHPLUS_URL = "https://www.pushplus.plus/send"
+
+
+class PushPlusPusher:
+    """
+    通过 PushPlus（https://www.pushplus.plus）推送到微信。
+    只需一个 token，无需微信公众号测试号。
+    与 WeChatPusher 提供相同的 send_batch(messages) 接口，方便切换。
+    """
+
+    def __init__(self, token):
+        self.token = token
+
+    def send_batch(self, messages, pause_seconds=2):
+        """把所有模板消息合并成一条 PushPlus 推送（每天 1 条汇总足够用）。"""
+        if not messages:
+            return 0
+
+        title = ""
+        parts = []
+        for msg in messages:
+            data = msg.get("data", {})
+            if not title and "first" in data:
+                title = data["first"]["value"]
+            for k, v in data.items():
+                val = v.get("value", "") if isinstance(v, dict) else str(v)
+                if k in ("first", "remark"):
+                    parts.append(val)
+                else:
+                    parts.append(f"{k}：{val}")
+            if msg.get("url"):
+                parts.append(f"🔗 {msg['url']}")
+            parts.append("")
+
+        title = (title or "arXiv 每日论文速览")[:100]
+        content = "\n".join(parts).strip()
+
+        payload = {
+            "token": self.token,
+            "title": title,
+            "content": content.replace("\n", "<br/>"),
+            "template": "html",
+        }
+        resp = requests.post(PUSHPLUS_URL, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("code") != 200:
+            raise RuntimeError(f"PushPlus 发送失败: {data}")
+        return 1
 
 
 class WeChatPusher:
