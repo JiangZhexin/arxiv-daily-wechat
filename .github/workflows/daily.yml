@@ -1,14 +1,14 @@
 name: arxiv-daily-wechat
 
 # 触发方式：
-#   schedule  -> 每天两次自动运行（去重机制保证已推过的论文不会重复推送）：
-#                ① UTC 04:30 = 北京时间 12:30（主推送：arXiv RSS 此时已更新到当天凌晨发布的论文）
-#                ② UTC 12:30 = 北京时间 20:30（兜底：12:30 漏触发或 RSS 更新更晚时补推）
+#   schedule  -> 每天两次自动运行（若早上已推送，中午那次会被去重机制跳过，不会重复）：
+#                ① UTC 23:30 = 北京时间 07:30（arXiv 新论文在北京时间凌晨 2-3 点发布）
+#                ② UTC 04:30 = 北京时间 12:30（兜底：arXiv API 索引延迟导致早上 0 篇时，中午补推）
 #   workflow_dispatch -> 也可以在 Actions 页面手动点击「Run workflow」测试
 on:
   schedule:
+    - cron: "30 23 * * *"
     - cron: "30 4 * * *"
-    - cron: "30 12 * * *"
   workflow_dispatch:
 
 # Pages 部署需要的权限
@@ -40,7 +40,8 @@ jobs:
           # ---------- Secrets（在仓库 Settings → Secrets and variables → Actions → Secrets 中配置）----------
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           DEEPSEEK_BASE_URL: ${{ secrets.DEEPSEEK_BASE_URL }}
-          WECHAT_APP_ID: ${{ secrets.WECHAT_APP_ID }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}   # 推荐：PushPlus token（配了就走 PushPlus 通道）
+          WECHAT_APP_ID: ${{ secrets.WECHAT_APP_ID }}     # 备选：微信测试号（不配 PushPlus 时使用）
           WECHAT_APP_SECRET: ${{ secrets.WECHAT_APP_SECRET }}
           WECHAT_TEMPLATE_ID: ${{ secrets.WECHAT_TEMPLATE_ID }}
           WECHAT_OPENID: ${{ secrets.WECHAT_OPENID }}
