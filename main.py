@@ -265,8 +265,10 @@ def main():
     if not ds_cfg["api_key"]:
         print("[错误] 缺少 DeepSeek API Key（设置 DEEPSEEK_API_KEY 或在 config.json 填写）")
         sys.exit(1)
-    if not args.dry_run and not (wx_cfg["app_id"] and wx_cfg["app_secret"] and wx_cfg["template_id"] and wx_cfg["user_openid"]):
-        print("[错误] 非 dry-run 模式需要完整微信配置（WECHAT_APP_ID / WECHAT_APP_SECRET / WECHAT_TEMPLATE_ID / WECHAT_OPENID）")
+    # 推送通道：配置了 PUSHPLUS_TOKEN 用 PushPlus，否则需要完整微信测试号配置
+    pushplus_token = os.environ.get("PUSHPLUS_TOKEN", "").strip()
+    if not args.dry_run and not pushplus_token and not (wx_cfg["app_id"] and wx_cfg["app_secret"] and wx_cfg["template_id"] and wx_cfg["user_openid"]):
+        print("[错误] 未配置推送通道：请设置 PUSHPLUS_TOKEN（推荐，一个 token 即可），或完整微信测试号配置（WECHAT_APP_ID / WECHAT_APP_SECRET / WECHAT_TEMPLATE_ID / WECHAT_OPENID）")
         sys.exit(1)
 
     # 1) 抓取
@@ -344,10 +346,16 @@ def main():
         print("\n[dry-run] 仅预览，未发送微信。")
         return
 
-    # 4) 推送
-    pusher = WeChatPusher(wx_cfg["app_id"], wx_cfg["app_secret"], wx_cfg["template_id"], wx_cfg["user_openid"])
+    # 4) 推送（优先 PushPlus，否则微信测试号）
+    if pushplus_token:
+        from wechat_push import PushPlusPusher
+        pusher = PushPlusPusher(pushplus_token)
+        channel = "PushPlus"
+    else:
+        pusher = WeChatPusher(wx_cfg["app_id"], wx_cfg["app_secret"], wx_cfg["template_id"], wx_cfg["user_openid"])
+        channel = "微信公众号测试号"
     sent = pusher.send_batch(messages)
-    print(f"[完成] 已发送 {sent} 条消息到微信，公众号: 测试号")
+    print(f"[完成] 已发送 {sent} 条消息到微信（通道: {channel}）")
 
     # 5) 记录本次已推送的论文 id（去重）
     _save_pushed_ids(pushed_ids | {p["id"] for p in papers})
