@@ -118,9 +118,10 @@ git push -u origin main
 |---|---|---|
 | `ARXIV_CATEGORIES` | `math.DG,math.GN,math.GT,math.GR,math.MG,math.NT` | 抓哪些分类 |
 | `ARXIV_HOURS_BACK` | `30` | 回看最近多少小时的论文（临时想看历史可调大，如 `120`） |
-| `ARXIV_MAX_PAPERS` | `30` | 单次最多推送多少篇 |
+| `ARXIV_MAX_PAPERS` | `200` | 单次最多推送多少篇 |
 | `WECHAT_MODE` | `digest` | `digest`=每天 1 条汇总；`detailed`=每篇 1 条含中英文摘要 |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | 使用的模型 |
+| `FILTER_KEYWORDS` 等 | *（留空）* | 关注关键词 / 作者，命中后额外提醒，见「五、关注关键词与作者」 |
 
 ### 第 4 步：启用 GitHub Pages（重要）
 
@@ -215,18 +216,24 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 
 | 变量名 | 说明 | 示例 |
 |---|---|---|
-| `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多词短语会整体匹配） | `Calabi-Yau,Ricci flow,minimal surface` |
-| `FILTER_AUTHORS` | 关注作者，逗号分隔；**只写姓氏也能匹配** | `Shing-Tung Yau,Tian` |
-| `FILTER_AUTHOR_CATEGORIES` | 作者条件**只在哪些分区生效**（留空 = 全部分区） | `math.DG,math.MG` |
+| `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多词短语会整体匹配，多个关键词之间是「或」） | `Calabi-Yau,Ricci flow,minimal surface` |
+| `FILTER_AUTHORS` | 关注作者，逗号分隔；**只写姓氏也能匹配**，**姓/名顺序随意** | `Shing-Tung Yau,Hou Yong` |
+| `FILTER_AUTHOR_CATEGORIES` | 作者条件**只在哪些分区生效**（留空 = 全部分区，推荐留空） | `math.DG,math.MG` |
 | `FILTER_SCOPE` | 关键词匹配范围：`title`（仅标题）/ `title_abstract`（标题 + 摘要，默认）/ `all`（连作者、分区等元数据一起匹配） | `title_abstract` |
 | `FILTER_LOGIC` | 关键词与作者的关系：`or`（任一命中即可，默认）/ `and`（两类都命中才算） | `or` |
+
+`FILTER_AUTHOR_CATEGORIES` 建议**留空**：arXiv 上同一位作者可能同时出现在多个分区（例如几何群论 `math.GR`、几何拓扑 `math.GT`），限定单一分区会漏掉一部分论文。只有在你确实只想盯某一个分区时才填。
 
 本地调试时也可以写在 `config.json` 的 `filter` 段里（参考 `config.example.json`）。
 
 ### 规则说明
 
 - **关键词**：在标题 + 摘要里做**不区分大小写**的子串匹配。写 `Ricci flow` 会匹配「两个词连在一起」的写法；想更宽松就只写单个词（如 `Ricci`）。
+  - 注意**单复数/搭配差异**：`Apollonian circle packing` 匹配不到 `Apollonian packings`（没有 `circle`）。这类主题建议写较短的核心词（如 `Apollonian`），或同时列几个（`Apollonian,circle packing`），命中范围取并集。
 - **作者**：不区分大小写、**忽略音标**（写 `Lopez` 也能匹配 `López`），支持只写姓氏（`Yau` 匹配 `Shing-Tung Yau`）。
+  - **姓与名的顺序可以颠倒**：写 `Hou Yong` 能命中 arXiv 上的 `Yong Hou`（arXiv 一律「名 姓」排列，中文作者的拼音名常被写成反的）。
+  - 多词名字要求**每个词都出现**，因此单写 `Hou` 只会命中姓 Hou 的人，不会误命中 `Chou`、`Hough`。
+  - 命中后，提醒里显示的是 **arXiv 上的真实作者名**（如查询 `Hou Yong` 会显示 `Yong Hou`），便于核对是哪一位。
 - **作者的分区限定**：`FILTER_AUTHOR_CATEGORIES` **只作用于作者条件**。例如填 `math.DG`，就只在微分几何分区里按作者找，其他分区完全不受作者条件影响；关键词条件仍照常在所有分区生效。
 - **命中太多/太少**：关键词越短命中越多（如 `hyperbolic` 会命中很多几何论文）；建议用较具体的术语。提醒消息每 5 篇一条，自动拆条，不会刷屏。
 - **抓取窗口**：命中检测是在当天抓到的论文里做的，不会回顾历史页面。
@@ -249,6 +256,29 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 ```
 
 网页顶部则会出现「⭐ 关注命中 7 篇（关键词 / 作者），已在下方标星 · 只看命中」，点「只看命中」可以只留命中项。
+
+### 一个完整的配置示例
+
+比如你关注「阿波罗尼奥斯圆填充」这个方向，同时想盯着某位作者：
+
+| 变量名 | 填什么 |
+|---|---|
+| `FILTER_KEYWORDS` | `Apollonian,circle packing` |
+| `FILTER_AUTHORS` | `Hou Yong` |
+| `FILTER_AUTHOR_CATEGORIES` | *（留空）* |
+| `FILTER_SCOPE` | `title_abstract` |
+| `FILTER_LOGIC` | `or` |
+
+含义：标题或摘要里出现 `Apollonian`（或 `circle packing`），**或者**这六个分区里任何一篇的作者是 `Yong Hou`，都会额外提醒一条。
+
+配置是否生效，看这一次 Actions 运行的日志，会打印这两行：
+
+```
+      [关注] 命中 1 篇（关键词/作者）
+      [关注] 另加 1 条命中提醒消息
+```
+
+如果显示 `[关注] 未配置关键词/作者，跳过命中检测`，说明变量没传进脚本——先确认变量建在 **Variables**（不是 Secrets）、名字拼写一致。
 
 ## 六、常见问题
 

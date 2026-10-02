@@ -11,9 +11,11 @@ filters.py —— 按「关键词」和「作者」挑出你关心的论文。
             多词短语（如 "Ricci flow"）会当作整体匹配；想放宽就写单个词。
   - 作者：  只在指定分区（author_categories）里匹配，其他分区完全不受作者条件影响；
             名字不区分大小写、忽略音标（写 Lopez 也能匹配 López），支持只写姓氏。
+            **姓与名的顺序可以颠倒**：写 "Hou Yong" 能命中 arXiv 上的 "Yong Hou"。
   - 组合：  logic = "or"（默认，关键词或作者任一命中即可）或 "and"（两类都必须命中）。
             只配置了一类的条件时，and 会退化为「只看该类条件」。
 """
+import re
 import unicodedata
 
 # 关键词匹配范围
@@ -59,11 +61,48 @@ def match_keywords(paper, keywords, scope=SCOPE_TITLE_ABSTRACT):
     return [kw for kw in keywords if normalize(kw) and normalize(kw) in haystack]
 
 
+def _name_parts(text: str):
+    """把作者名拆成词元列表。
+
+    忽略大小写、音标、以及连字符/句点/逗号的写法差异：
+        "Shing-Tung Yau" / "Shing Tung Yau"  -> ["shing", "tung", "yau"]
+        "Yong Hou" / "Hou, Yong"             -> ["yong", "hou"]
+    """
+    return [p for p in re.split(r"[\s\-.,;·]+", normalize(text)) if p]
+
+
+def _token_hit(token: str, parts) -> bool:
+    """单个词元是否命中。
+
+    - 完全相等即命中（"yau" 命中 "Shing-Tung Yau"）
+    - 词元长度 >= 4 时允许前缀匹配（写 "Baml" 也能命中 "Bamler"）
+    - 不做整体子串匹配，避免 "Hou" 误命中 "Chou" / "Hough"
+    """
+    if token in parts:
+        return True
+    return len(token) >= 4 and any(p.startswith(token) for p in parts)
+
+
+def _author_matches(query_parts, author_parts) -> bool:
+    """一个作者查询词是否命中某位作者。
+
+    - 单个词元：按姓氏/名字匹配即可（"yau" 命中 "Shing-Tung Yau"）
+    - 多个词元：**每个词元都要出现**，且不要求顺序
+      （"Hou Yong" 命中 "Yong Hou"；"Shing-Tung Yau" 命中 "Yau Shing Tung"）
+    """
+    if not query_parts:
+        return False
+    return all(_token_hit(q, author_parts) for q in query_parts)
+
+
 def match_authors(paper, authors, author_categories=None):
-    """返回命中的作者查询词列表。
+    """返回命中的**论文作者原名**列表（没命中就是空列表）。
 
     author_categories 非空时，只有属于这些分区的论文才参与作者匹配
     （其他分区不受作者条件影响）。
+
+    返回的是 arXiv 上的真实作者名（如查询 "Hou Yong" 命中时返回 "Yong Hou"），
+    这样推文和网页上能直接看出是哪位作者命中的。
     """
     if not authors:
         return []
@@ -74,14 +113,19 @@ def match_authors(paper, authors, author_categories=None):
         if not (cats & set(author_categories)):
             return []
 
-    paper_authors = [normalize(a) for a in (paper.get("authors") or []) if a]
+    paper_authors = [(a, _name_parts(a)) for a in (paper.get("authors") or []) if a]
     if not paper_authors:
         return []
     hits = []
     for want in authors:
-        w = normalize(want)
-        if w and any(w in pa for pa in paper_authors):
-            hits.append(want)
+        q_parts = _name_parts(want)
+        if not q_parts:
+            continue
+        for name, parts in paper_authors:
+            if _author_matches(q_parts, parts):
+                if name not in hits:
+                    hits.append(name)
+                break
     return hits
 
 
