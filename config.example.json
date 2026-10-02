@@ -23,5 +23,12 @@
       "keyword3": "keyword3",
       "remark": "remark"
     }
+  },
+  "filter": {
+    "keywords": ["Calabi-Yau", "Ricci flow"],
+    "authors": ["Shing-Tung Yau"],
+    "author_categories": ["math.DG"],
+    "scope": "title_abstract",
+    "logic": "or"
   }
 }

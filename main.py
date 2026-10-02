@@ -18,6 +18,13 @@ main.py —— arXiv 每日论文速览（抓取 + DeepSeek 中文总结 + 微�
     WECHAT_APP_SECRET     测试号 appsecret（必填）
     WECHAT_TEMPLATE_ID    测试号模板消息模板 ID（必填）
     WECHAT_OPENID         测试号测试者（你自己）的 openid（必填）
+
+关注筛选（可选，配了就会额外推一条「⭐ 关注命中」提醒，并在网页标注）:
+    FILTER_KEYWORDS           关注关键词，逗号分隔，如 "Calabi-Yau,Ricci flow"
+    FILTER_AUTHORS            关注作者，逗号分隔，如 "Shing-Tung Yau"（支持只写姓氏）
+    FILTER_AUTHOR_CATEGORIES  作者条件只在哪些分区生效，如 "math.DG,math.MG"（留空=全部分区）
+    FILTER_SCOPE              关键词匹配范围: title / title_abstract(默认) / all
+    FILTER_LOGIC              关键词与作者的关系: or(默认) / and
 """
 import argparse
 import json
@@ -26,6 +33,7 @@ import sys
 from datetime import datetime, timezone
 
 from arxiv_fetcher import fetch_new_papers
+from filters import match_papers
 from summarizer import summarize_papers
 from wechat_push import WeChatPusher
 
@@ -46,6 +54,9 @@ DEFAULT_MESSAGE_MODE = "digest"
 
 # 详细模式：每条消息 1 篇（中英文摘要完整展示）
 DETAILED_PAPERS_PER_MESSAGE = 1
+
+# 关注命中提醒：每条消息最多列几篇（微信模板 remark 约 600 字符上限）
+HIT_ITEMS_PER_MESSAGE = 5
 
 # 分类中文名，用于消息里展示
 CATEGORY_NAMES = {
@@ -83,6 +94,16 @@ def _save_pushed_ids(ids):
 def _utf8():
     if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
         sys.stdout.reconfigure(encoding="utf-8")
+
+
+def _split_list(raw):
+    """把配置字符串拆成列表：支持英文/中文逗号与分号，如 "a, b；c"。"""
+    if not raw:
+        return []
+    text = str(raw)
+    for sep in ("；", ";", "，", ","):
+        text = text.replace(sep, "|")
+    return [x.strip() for x in text.split("|") if x.strip()]
 
 
 def load_config():
@@ -127,6 +148,18 @@ def load_config():
         "mode": mode,
     }
 
+    # ---------- 关注筛选（关键词 / 作者），用于额外提醒 ----------
+    # 环境变量 > config.json；不配置则不做任何筛选
+    flt_cfg = cfg.get("filter", {})
+    filter_cfg = {
+        "keywords": _split_list(os.environ.get("FILTER_KEYWORDS")) or list(flt_cfg.get("keywords") or []),
+        "authors": _split_list(os.environ.get("FILTER_AUTHORS")) or list(flt_cfg.get("authors") or []),
+        "author_categories": _split_list(os.environ.get("FILTER_AUTHOR_CATEGORIES"))
+        or list(flt_cfg.get("author_categories") or []),
+        "scope": (os.environ.get("FILTER_SCOPE") or flt_cfg.get("scope") or "title_abstract").strip(),
+        "logic": (os.environ.get("FILTER_LOGIC") or flt_cfg.get("logic") or "or").strip().lower(),
+    }
+
     return {
         "arxiv": {
             "categories": categories,
@@ -135,11 +168,17 @@ def load_config():
         },
         "deepseek": deepseek,
         "wechat": wechat,
+        "filter": filter_cfg,
     }
 
 
 def _category_label(primary: str) -> str:
     return CATEGORY_NAMES.get(primary, primary)
+
+
+def _cut(text, limit):
+    """按字符数截断，超出时补省略号。"""
+    return text[:limit] + ("…" if len(text) > limit else "")
 
 
 def _assign_section(p, categories):
@@ -187,9 +226,6 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
             k3: {"value": keyword3_text},
             r: {"value": remark_text},
         }
-
-    def _cut(text, limit):
-        return text[:limit] + ("…" if len(text) > limit else "")
 
     messages = []
 
@@ -249,6 +285,71 @@ def build_messages(papers, summaries, template_fields, categories, date_str, mod
         }
     )
 
+    return messages
+
+
+def build_hit_messages(hit_pairs, summaries, template_fields, categories, date_str, page_url=None, per_message=HIT_ITEMS_PER_MESSAGE):
+    """构造「⭐ 关注命中」提醒消息（关键词 / 作者命中的论文）。
+
+    hit_pairs: [(paper, {"keywords": [...], "authors": [...]}), ...]
+    返回: list[dict]，结构与 build_messages 一致；命中过多时自动拆成多条。
+    """
+    if not hit_pairs:
+        return []
+
+    f, k1, k2, k3, r = (
+        template_fields["first"],
+        template_fields["keyword1"],
+        template_fields["keyword2"],
+        template_fields["keyword3"],
+        template_fields["remark"],
+    )
+    total = len(hit_pairs)
+    chunks = [hit_pairs[i : i + per_message] for i in range(0, total, per_message)]
+
+    messages = []
+    for idx, chunk in enumerate(chunks, 1):
+        lines = []
+        for p, info in chunk:
+            title_zh = (summaries.get(p["id"], {}) or {}).get("title_zh") or p["title"]
+            label = _category_label(_assign_section(p, categories))
+            lines.append(f"[{p['id']}] {title_zh}（{label}）")
+            authors = p.get("authors") or []
+            if authors:
+                shown = "、".join(authors[:3]) + (" 等" if len(authors) > 3 else "")
+                lines.append(f"👥 {shown}")
+            why = []
+            if info.get("keywords"):
+                why.append("关键词 " + "、".join(info["keywords"]))
+            if info.get("authors"):
+                why.append("作者 " + "、".join(info["authors"]))
+            if why:
+                lines.append("🎯 " + "；".join(why))
+            lines.append("")
+
+        tail = f"共 {total} 篇命中"
+        if len(chunks) > 1:
+            tail += f"（第 {idx}/{len(chunks)} 条）"
+        if page_url:
+            tail += "，点击查看全部论文"
+        lines.append(tail)
+
+        remark_text = "\n".join(lines).strip()
+        if len(remark_text) > 600:
+            remark_text = _cut(remark_text, 590)
+
+        messages.append(
+            {
+                "data": {
+                    f: {"value": f"⭐ 关注命中 · {total} 篇"},
+                    k1: {"value": "关键词 / 作者命中"},
+                    k2: {"value": date_str},
+                    k3: {"value": f"共 {total} 篇"},
+                    r: {"value": remark_text},
+                },
+                "url": page_url,
+            }
+        )
     return messages
 
 
@@ -315,6 +416,16 @@ def main():
         print(f"      [提示] 论文较多，详细模式本次仅推送最新的 {arxiv_cfg['max_papers_per_run']} 篇（可调大 max_papers_per_run）")
         papers = papers[: arxiv_cfg["max_papers_per_run"]]
 
+    # 关注命中：关键词 / 作者命中的论文
+    # 不影响全量推送，只用于「额外单独提醒」+ 网页星标
+    hit_pairs = match_papers(all_papers, cfg["filter"])
+    hit_map = {p["id"]: info for p, info in hit_pairs}
+    flt = cfg["filter"]
+    if flt.get("keywords") or flt.get("authors"):
+        print(f"      [关注] 命中 {len(hit_pairs)} 篇（关键词/作者）")
+    else:
+        print("      [关注] 未配置关键词/作者，跳过命中检测")
+
     # 若配置了 PAGE_BASE_URL（GitHub Pages 推文页地址），先生成页面文件并拼出 url
     # 页面用全部论文（all_papers），微信详细模式才截断
     page_base_url = os.environ.get("PAGE_BASE_URL", "").strip()
@@ -322,7 +433,9 @@ def main():
     if page_base_url and not args.dry_run:
         try:
             from page_builder import write_daily_page
-            daily_path, index_path = write_daily_page(all_papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages")
+            daily_path, index_path = write_daily_page(
+                all_papers, summaries, arxiv_cfg["categories"], date_str, output_dir="pages", hits=hit_map
+            )
             page_url = page_base_url.rstrip("/") + "/" + os.path.basename(daily_path)
             print(f"      已生成推文页面: {daily_path} + {index_path}")
         except Exception as exc:
@@ -330,17 +443,27 @@ def main():
             page_url = None
 
     messages = build_messages(papers, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, mode=mode, page_url=page_url)
+    hit_messages = build_hit_messages(
+        hit_pairs, summaries, wx_cfg["template_fields"], arxiv_cfg["categories"], date_str, page_url=page_url
+    )
     if mode == "digest":
         jump_hint = f" → 点击跳转推文页: {page_url}" if page_url else ""
         print(f"[3/3] 模式=速览汇总，共 {len(messages)} 条微信消息（1 条汇总，含各分区统计）{jump_hint}")
     else:
         print(f"[3/3] 模式=详细，共组织 {len(messages)} 条微信模板消息（每篇 1 条）")
+    if hit_messages:
+        print(f"      [关注] 另加 {len(hit_messages)} 条命中提醒消息")
 
     if args.dry_run:
         print("\n================  dry-run 预览 ================")
         for idx, msg in enumerate(messages, 1):
             jump = f" |  点击跳转: {msg['url']}" if msg.get("url") else ""
             print(f"\n----- 消息 {idx}{jump} -----")
+            for k, v in msg["data"].items():
+                print(f"{k}: {v['value']}")
+        for idx, msg in enumerate(hit_messages, 1):
+            jump = f" |  点击跳转: {msg['url']}" if msg.get("url") else ""
+            print(f"\n----- ⭐ 命中提醒 {idx}{jump} -----")
             for k, v in msg["data"].items():
                 print(f"{k}: {v['value']}")
         print("\n[dry-run] 仅预览，未发送微信。")
@@ -355,6 +478,9 @@ def main():
         pusher = WeChatPusher(wx_cfg["app_id"], wx_cfg["app_secret"], wx_cfg["template_id"], wx_cfg["user_openid"])
         channel = "微信公众号测试号"
     sent = pusher.send_batch(messages)
+    if hit_messages:
+        sent += pusher.send_batch(hit_messages)
+        print(f"      [关注] 已额外发送命中提醒 {len(hit_messages)} 条")
     print(f"[完成] 已发送 {sent} 条消息到微信（通道: {channel}）")
 
     # 5) 记录本次已推送的论文 id（去重）

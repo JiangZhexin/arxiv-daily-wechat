@@ -66,6 +66,10 @@ details { margin: 4px 0; }
 details summary { cursor: pointer; color: #555; font-size: 0.92em; margin-top: 2px; }
 details p { margin: 6px 0 8px; color: #444; font-size: 0.93em; }
 .ai-line { color: #444; font-size: 0.95em; margin: 2px 0; }
+.hit-title { color: #b9770e; }
+.hit-why { color: #b9770e; font-size: 0.86em; margin: 2px 0 4px; }
+.hit-banner { background: #fff8e6; border-left: 4px solid #f0b429; padding: 10px 14px;
+              border-radius: 6px; margin-bottom: 18px; font-size: 0.92em; color: #7d5a12; }
 .history { margin-bottom: 16px; font-size: 0.9em; color: #555; line-height: 1.9; }
 .history a { color: #06c; margin-right: 10px; text-decoration: none; }
 .history a:hover { text-decoration: underline; }
@@ -78,15 +82,45 @@ footer { color: #aaa; font-size: 0.85em; text-align: center; margin-top: 40px; p
 """
 
 
+_JS = """
+(function () {
+  var btn = document.getElementById('hit-toggle');
+  if (!btn) return;
+  var onlyHit = false;
+  btn.addEventListener('click', function (e) {
+    e.preventDefault();
+    onlyHit = !onlyHit;
+    var lis = document.querySelectorAll('section li');
+    for (var i = 0; i < lis.length; i++) {
+      var isHit = lis[i].querySelector('.hit-title') !== null;
+      lis[i].style.display = (onlyHit && !isHit) ? 'none' : '';
+    }
+    var secs = document.querySelectorAll('section');
+    for (var j = 0; j < secs.length; j++) {
+      var any = false;
+      var inner = secs[j].querySelectorAll('li');
+      for (var k = 0; k < inner.length; k++) {
+        if (inner[k].style.display !== 'none') { any = true; break; }
+      }
+      secs[j].style.display = any ? '' : 'none';
+    }
+    btn.textContent = onlyHit ? '显示全部' : '只看命中';
+  });
+})();
+"""
+
+
 def _escape(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_daily_html(papers, summaries, categories, date_str, base_url="https://arxiv.org/abs/", history_links=None):
+def build_daily_html(papers, summaries, categories, date_str, base_url="https://arxiv.org/abs/", history_links=None, hits=None):
     """生成完整的每日论文 HTML 页面字符串。
 
     history_links: 可选，历史页面文件名列表，如 ["daily-2026-08-23.html", ...]，会在顶部显示历史入口。
+    hits: 可选，{论文 id: {"keywords": [...], "authors": [...]}}，命中的论文会加 ⭐ 与命中原因。
     """
+    hits = hits or {}
     sections = {c: [] for c in categories}
     for p in papers:
         sec = _assign_section(p, categories)
@@ -101,6 +135,14 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
     out.append(f"<style>{_CSS}</style></head><body>")
     out.append(f"<h1>📚 arXiv 每日论文速览 · {date_str}</h1>")
     out.append(f'<div class="meta">共 {len(papers)} 篇论文 · 覆盖 {len(active_sections)} 个分类 · 由 arXiv API + DeepSeek 自动整理</div>')
+
+    # 关注命中提示（关键词 / 作者）
+    hit_count = sum(1 for p in papers if p["id"] in hits)
+    if hit_count:
+        out.append(
+            f'<div class="hit-banner">⭐ 关注命中 {hit_count} 篇（关键词 / 作者），已在下方标星 · '
+            f'<a href="#" id="hit-toggle">只看命中</a></div>'
+        )
 
     # 历史入口
     if history_links:
@@ -133,7 +175,16 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
             en_title = _escape(p["title"])
             arxiv_url = f"{base_url}{p['id']}"
 
-            blocks = [f'<div class="title">[<a href="{arxiv_url}" target="_blank" rel="noopener">{p["id"]}</a>] {title_zh}</div>']
+            hit = hits.get(p["id"])
+            mark = '<span class="hit-title">⭐</span> ' if hit else ""
+            blocks = [f'<div class="title">{mark}[<a href="{arxiv_url}" target="_blank" rel="noopener">{p["id"]}</a>] {title_zh}</div>']
+            if hit:
+                why = []
+                if hit.get("keywords"):
+                    why.append("关键词 " + " / ".join(_escape(k) for k in hit["keywords"]))
+                if hit.get("authors"):
+                    why.append("作者 " + " / ".join(_escape(a) for a in hit["authors"]))
+                blocks.append(f'<div class="hit-why">🎯 命中：{" · ".join(why)}</div>')
             blocks.append(f'<div class="en-title">{en_title}</div>')
             authors = [a for a in (p.get("authors") or []) if a]
             if authors:
@@ -152,14 +203,17 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
         out.append("</ol></section>")
 
     out.append('<footer>由 <a href="https://arxiv.org">arXiv</a> API + <a href="https://www.deepseek.com">DeepSeek</a> 自动生成 · 微信公众号测试号推送</footer>')
+    if hit_count:
+        out.append(f"<script>{_JS}</script>")
     out.append("</body></html>")
     return "\n".join(out)
 
 
-def write_daily_page(papers, summaries, categories, date_str, output_dir="pages", base_url="https://arxiv.org/abs/"):
+def write_daily_page(papers, summaries, categories, date_str, output_dir="pages", base_url="https://arxiv.org/abs/", hits=None):
     """
     生成今日 HTML 页面（daily-YYYY-MM-DD.html）和总目录首页（index.html）。
     index.html 是所有日期论文速览的索引汇总页（点击日期进入当天详情）。
+    hits: 可选，{论文 id: 命中信息}，命中的论文加 ⭐ 标记。
     返回: (daily_path, index_path)
     """
     os.makedirs(output_dir, exist_ok=True)
@@ -172,7 +226,7 @@ def write_daily_page(papers, summaries, categories, date_str, output_dir="pages"
     )
     history.reverse()  # 新的在前
 
-    html = build_daily_html(papers, summaries, categories, date_str, base_url=base_url, history_links=history)
+    html = build_daily_html(papers, summaries, categories, date_str, base_url=base_url, history_links=history, hits=hits)
 
     daily_path = os.path.join(output_dir, f"daily-{date_str}.html")
     with open(daily_path, "w", encoding="utf-8") as f:

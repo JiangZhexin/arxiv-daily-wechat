@@ -33,6 +33,8 @@
 - 🌐 **English Abstract**（原文）
 - 👉 **arXiv 链接**（点击直达原文）
 
+**⭐ 关注命中（可选）**：配置关键词/作者后，命中的论文会**额外单独推一条提醒**，网页上也会加 ⭐ 标记，并支持「只看命中」一键筛选。详见[第五节](#五关注关键词与作者可选)。
+
 ## 目录结构
 
 ```
@@ -40,7 +42,8 @@ arxiv-daily-wechat/
 ├── main.py                  # 主流程：抓取 → 总结 → 生成网页 → 推送
 ├── arxiv_fetcher.py         # arXiv RSS 抓取（与网页实时同步，无索引延迟）
 ├── summarizer.py            # DeepSeek 批量生成中文标题/总结/AI总结/摘要翻译
-├── page_builder.py          # 生成每日 HTML 推文页（含作者、历史索引）
+├── page_builder.py          # 生成每日 HTML 推文页（含作者、命中星标、历史索引）
+├── filters.py               # 关注筛选：关键词 / 作者命中检测（用于额外提醒与标星）
 ├── wechat_push.py           # 微信公众号测试号模板消息推送
 ├── tools/backfill_authors.py # 给「加作者之前」生成的历史页面补作者（可选，手动跑）
 ├── config.example.json      # 本地配置模板（复制为 config.json 使用）
@@ -202,7 +205,52 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 - `ARXIV_HOURS_BACK`：回看最近多少小时的论文（默认 30；临时想看历史可调大到 120）
 - `ARXIV_MAX_PAPERS`：单次最多推送多少篇（默认 30）
 
-## 五、常见问题
+## 五、关注关键词与作者（可选）
+
+除了每天的全量速览，还可以配置**关注关键词**和**关注作者**。命中的论文会在微信里**额外单独推一条「⭐ 关注命中」提醒**（原有的全量汇总照常推送，不受影响）；网页上也会给命中项加 ⭐ 与命中原因，并多出一个「只看命中 / 显示全部」的切换按钮。
+
+### 配置方式
+
+在仓库 **Settings → Secrets and variables → Actions → Variables** 里新建（不配置这些变量就是普通全量模式，不会有任何影响）：
+
+| 变量名 | 说明 | 示例 |
+|---|---|---|
+| `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多词短语会整体匹配） | `Calabi-Yau,Ricci flow,minimal surface` |
+| `FILTER_AUTHORS` | 关注作者，逗号分隔；**只写姓氏也能匹配** | `Shing-Tung Yau,Tian` |
+| `FILTER_AUTHOR_CATEGORIES` | 作者条件**只在哪些分区生效**（留空 = 全部分区） | `math.DG,math.MG` |
+| `FILTER_SCOPE` | 关键词匹配范围：`title`（仅标题）/ `title_abstract`（标题 + 摘要，默认）/ `all`（连作者、分区等元数据一起匹配） | `title_abstract` |
+| `FILTER_LOGIC` | 关键词与作者的关系：`or`（任一命中即可，默认）/ `and`（两类都命中才算） | `or` |
+
+本地调试时也可以写在 `config.json` 的 `filter` 段里（参考 `config.example.json`）。
+
+### 规则说明
+
+- **关键词**：在标题 + 摘要里做**不区分大小写**的子串匹配。写 `Ricci flow` 会匹配「两个词连在一起」的写法；想更宽松就只写单个词（如 `Ricci`）。
+- **作者**：不区分大小写、**忽略音标**（写 `Lopez` 也能匹配 `López`），支持只写姓氏（`Yau` 匹配 `Shing-Tung Yau`）。
+- **作者的分区限定**：`FILTER_AUTHOR_CATEGORIES` **只作用于作者条件**。例如填 `math.DG`，就只在微分几何分区里按作者找，其他分区完全不受作者条件影响；关键词条件仍照常在所有分区生效。
+- **命中太多/太少**：关键词越短命中越多（如 `hyperbolic` 会命中很多几何论文）；建议用较具体的术语。提醒消息每 5 篇一条，自动拆条，不会刷屏。
+- **抓取窗口**：命中检测是在当天抓到的论文里做的，不会回顾历史页面。
+
+### 效果示例
+
+微信里会多出这样一条独立提醒：
+
+```
+⭐ 关注命中 · 7 篇
+关键词 / 作者命中
+
+[2609.36717] Tensile minimal surfaces and thread boundary problems（微分几何）
+👥 Romane Boutillier、Laurent Hauswirth、Magdalena Rodríguez
+🎯 关键词 minimal surface
+
+[2609.37549] Smoothing polyhedral spaces via Ricci flow（微分几何）
+👥 Richard H. Bamler、Esther Cabezas-Rivas
+🎯 关键词 Ricci flow
+```
+
+网页顶部则会出现「⭐ 关注命中 7 篇（关键词 / 作者），已在下方标星 · 只看命中」，点「只看命中」可以只留命中项。
+
+## 六、常见问题
 
 **Q1：微信收到消息但字段显示空白/错位？**
 不同模板的字段名可能不同。确保模板内容用的是 `{{first.DATA}}`、`{{keyword1.DATA}}`…`{{remark.DATA}}` 这套命名；如果你自定义了字段名，把对应关系填到 `config.json` 的 `template_fields` 映射里（或改 `main.py` 的 `DEFAULT_TEMPLATE_FIELDS`）。
@@ -235,7 +283,7 @@ python tools/backfill_authors.py 某个目录    # 或指定目录
 
 脚本是幂等的：已有作者行的页面会自动跳过，重复跑不会重复插入。补完把 `pages/` 提交回仓库即可。
 
-## 六、隐私与公开说明（重要，请 copy/fork 本项目的同学阅读）
+## 七、隐私与公开说明（重要，请 copy/fork 本项目的同学阅读）
 
 > ⚠️ 这个项目默认是 **Public（公开）仓库 + GitHub Pages 公开网页**，请知悉以下情况：
 
