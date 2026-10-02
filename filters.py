@@ -11,7 +11,7 @@ filters.py —— 按「关键词」和「作者」挑出你关心的论文。
             多词短语（如 "Ricci flow"）会当作整体匹配；想放宽就写单个词。
   - 作者：  只在指定分区（author_categories）里匹配，其他分区完全不受作者条件影响；
             名字不区分大小写、忽略音标（写 Lopez 也能匹配 López），支持只写姓氏。
-            **姓与名的顺序可以颠倒**：写 "Hou Yong" 能命中 arXiv 上的 "Yong Hou"。
+            **姓与名的顺序可以颠倒**：写 "Yau Shing-Tung" 能命中 arXiv 上的 "Shing-Tung Yau"。
   - 组合：  logic = "or"（默认，关键词或作者任一命中即可）或 "and"（两类都必须命中）。
             只配置了一类的条件时，and 会退化为「只看该类条件」。
 """
@@ -66,7 +66,7 @@ def _name_parts(text: str):
 
     忽略大小写、音标、以及连字符/句点/逗号的写法差异：
         "Shing-Tung Yau" / "Shing Tung Yau"  -> ["shing", "tung", "yau"]
-        "Yong Hou" / "Hou, Yong"             -> ["yong", "hou"]
+        "Yau, Shing-Tung"                    -> ["yau", "shing", "tung"]
     """
     return [p for p in re.split(r"[\s\-.,;·]+", normalize(text)) if p]
 
@@ -76,7 +76,7 @@ def _token_hit(token: str, parts) -> bool:
 
     - 完全相等即命中（"yau" 命中 "Shing-Tung Yau"）
     - 词元长度 >= 4 时允许前缀匹配（写 "Baml" 也能命中 "Bamler"）
-    - 不做整体子串匹配，避免 "Hou" 误命中 "Chou" / "Hough"
+    - 不做整体子串匹配，避免短姓氏误命中更长的相似姓氏（写 "Zhu" 不会命中 "Zhukov"）
     """
     if token in parts:
         return True
@@ -88,7 +88,7 @@ def _author_matches(query_parts, author_parts) -> bool:
 
     - 单个词元：按姓氏/名字匹配即可（"yau" 命中 "Shing-Tung Yau"）
     - 多个词元：**每个词元都要出现**，且不要求顺序
-      （"Hou Yong" 命中 "Yong Hou"；"Shing-Tung Yau" 命中 "Yau Shing Tung"）
+      （"Yau Shing-Tung" 命中 "Shing-Tung Yau"；"Cheng Xiao-Dong" 命中 "Xiao-Dong Cheng"）
     """
     if not query_parts:
         return False
@@ -101,7 +101,7 @@ def match_authors(paper, authors, author_categories=None):
     author_categories 非空时，只有属于这些分区的论文才参与作者匹配
     （其他分区不受作者条件影响）。
 
-    返回的是 arXiv 上的真实作者名（如查询 "Hou Yong" 命中时返回 "Yong Hou"），
+    返回的是 arXiv 上的真实作者名（如查询 "Yau Shing-Tung" 命中时返回 "Shing-Tung Yau"），
     这样推文和网页上能直接看出是哪位作者命中的。
     """
     if not authors:

@@ -217,26 +217,26 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 | 变量名 | 说明 | 示例 |
 |---|---|---|
 | `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多词短语会整体匹配，多个关键词之间是「或」） | `Calabi-Yau,Ricci flow,minimal surface` |
-| `FILTER_AUTHORS` | 关注作者，逗号分隔；**只写姓氏也能匹配**，**姓/名顺序随意** | `Shing-Tung Yau,Hou Yong` |
-| `FILTER_AUTHOR_CATEGORIES` | 作者条件**只在哪些分区生效**；填多个时**命中任一个即算**（留空 = 抓取的全部分区，推荐留空） | `math.GT,math.GR` |
+| `FILTER_AUTHORS` | 关注作者，逗号分隔；**只写姓氏也能匹配**，**姓/名顺序随意** | `Shing-Tung Yau,Terence Tao` |
+| `FILTER_AUTHOR_CATEGORIES` | 作者条件**只在哪些分区生效**；填多个时**命中任一个即算**（留空 = 抓取的全部分区，推荐留空） | `math.DG,math.MG` |
 | `FILTER_SCOPE` | 关键词匹配范围：`title`（仅标题）/ `title_abstract`（标题 + 摘要，默认）/ `all`（连作者、分区等元数据一起匹配） | `title_abstract` |
 | `FILTER_LOGIC` | 关键词与作者的关系：`or`（任一命中即可，默认）/ `and`（两类都命中才算） | `or` |
 
-`FILTER_AUTHOR_CATEGORIES` 建议**留空**：arXiv 上同一位作者可能同时出现在多个分区（例如几何群论 `math.GR`、几何拓扑 `math.GT`），限定单一分区会漏掉一部分论文。只有在你确实只想盯某一个分区时才填。
+`FILTER_AUTHOR_CATEGORIES` 建议**留空**：arXiv 上同一位作者可能同时出现在多个分区（例如微分几何 `math.DG`、度量几何 `math.MG`），限定单一分区会漏掉一部分论文。只有在你确实只想盯某一个分区时才填。
 
 本地调试时也可以写在 `config.json` 的 `filter` 段里（参考 `config.example.json`）。
 
 ### 规则说明
 
 - **关键词**：在标题 + 摘要里做**不区分大小写**的子串匹配。写 `Ricci flow` 会匹配「两个词连在一起」的写法；想更宽松就只写单个词（如 `Ricci`）。
-  - 注意**单复数/搭配差异**：`Apollonian circle packing` 匹配不到 `Apollonian packings`（没有 `circle`）。这类主题建议写较短的核心词（如 `Apollonian`），或同时列几个（`Apollonian,circle packing`），命中范围取并集。
+  - 注意**词形/搭配差异**：写 `Ricci flow` 匹配不到 `Ricci soliton`（中间少了 `flow`）。这类主题建议写较短的核心词（如 `Ricci`），或同时列几个（`Calabi-Yau,Ricci flow`），命中范围取并集。
 - **作者**：不区分大小写、**忽略音标**（写 `Lopez` 也能匹配 `López`），支持只写姓氏（`Yau` 匹配 `Shing-Tung Yau`）。
-  - **姓与名的顺序可以颠倒**：写 `Hou Yong` 能命中 arXiv 上的 `Yong Hou`（arXiv 一律「名 姓」排列，中文作者的拼音名常被写成反的）。
-  - 多词名字要求**每个词都出现**，因此单写 `Hou` 只会命中姓 Hou 的人，不会误命中 `Chou`、`Hough`。
-  - 命中后，提醒里显示的是 **arXiv 上的真实作者名**（如查询 `Hou Yong` 会显示 `Yong Hou`），便于核对是哪一位。
+  - **姓与名的顺序可以颠倒**：写 `Yau Shing-Tung` 能命中 arXiv 上的 `Shing-Tung Yau`（arXiv 一律「名 姓」排列，中文作者的拼音名常被写成反的）。
+  - 多词名字要求**每个词都出现**，因此单写一个短姓氏只会命中真正姓这个的人，不会误命中更长的相似姓氏（写 `Zhu` 不会命中 `Zhukov`）。
+  - 命中后，提醒里显示的是 **arXiv 上的真实作者名**（如查询 `Yau Shing-Tung` 会显示 `Shing-Tung Yau`），便于核对是哪一位。
 - **作者的分区限定**：`FILTER_AUTHOR_CATEGORIES` **只作用于作者条件**。论文**只要属于其中任意一个分区**就参与作者匹配——是「任一即可」，不需要同时满足所有分区。
   - 留空（推荐）= 你抓取的所有分区都参与作者匹配。
-  - 填 `math.GT,math.GR` = 只要论文在几何拓扑**或**几何群论里，就按作者找；关键词条件仍照常在所有分区生效。
+  - 填 `math.DG,math.MG` = 只要论文在微分几何**或**度量几何里，就按作者找；关键词条件仍照常在所有分区生效。
   - 注意交叉列出的论文按它挂的**全部**分区判断（例如主分类 `math.DG`、同时挂 `math.NT`，填 `math.NT` 也算命中）。
 - **命中太多/太少**：关键词越短命中越多（如 `hyperbolic` 会命中很多几何论文）；建议用较具体的术语。提醒消息每 5 篇一条，自动拆条，不会刷屏。
 - **抓取窗口**：命中检测是在当天抓到的论文里做的，不会回顾历史页面。
