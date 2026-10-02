@@ -7,7 +7,7 @@ main.py —— arXiv 每日论文速览（抓取 + DeepSeek 中文总结 + 微�
     本地正式运行:           python main.py
     查看帮助:               python main.py --help
 
-配置优先级: 环境变量 > config.json（config.json 由 config.example.json 复制改名而来）
+配置优先级: 环境变量 > 仓库 Variables（Actions 内自动通过 API 读）> config.json
 环境变量清单（GitHub Actions 里通过 Secrets/Variables 注入）:
     ARXIV_CATEGORIES      逗号分隔的分类，如 "math.DG,math.GN,math.GT"
     ARXIV_HOURS_BACK      回看小时数，默认 36
@@ -25,12 +25,20 @@ main.py —— arXiv 每日论文速览（抓取 + DeepSeek 中文总结 + 微�
     FILTER_AUTHOR_CATEGORIES  作者条件只在哪些分区生效，如 "math.DG,math.MG"（留空=全部分区）
     FILTER_SCOPE              关键词匹配范围: title / title_abstract(默认) / all
     FILTER_LOGIC              关键词与作者的关系: or(默认) / and
+
+    ⚠️ 这五项**不要**写进 workflow 的 env：GitHub 会把 run 步骤的 env 明文打印进
+    运行日志（Secrets 会打码，Variables 不会），而公开仓库的日志任何人可见，
+    等于把你的关注方向公开。它们应该配在仓库 Variables 里，由本脚本运行时
+    用 GITHUB_TOKEN 通过 API 读取（见 _fetch_filter_vars）。
+    本地调试仍可用环境变量或 config.json 覆盖。
 """
 import argparse
 import json
 import os
 import sys
 from datetime import datetime, timezone
+
+import requests
 
 from arxiv_fetcher import fetch_new_papers
 from filters import match_papers
@@ -106,6 +114,56 @@ def _split_list(raw):
     return [x.strip() for x in text.split("|") if x.strip()]
 
 
+# 关注筛选配置在仓库 Variables 里的变量名 → 内部字段名
+_FILTER_VAR_KEYS = {
+    "FILTER_KEYWORDS": "keywords",
+    "FILTER_AUTHORS": "authors",
+    "FILTER_AUTHOR_CATEGORIES": "author_categories",
+    "FILTER_SCOPE": "scope",
+    "FILTER_LOGIC": "logic",
+}
+
+
+def _fetch_filter_vars():
+    """从仓库 Variables 读筛选配置（GitHub Actions 内用 job 自带的 GITHUB_TOKEN）。
+
+    为什么不直接把 `${{ vars.FILTER_KEYWORDS }}` 写进 workflow 的 env：
+    GitHub 会把每个 run 步骤的 env **明文打印进日志**，而 Secrets 会被打码、Variables 不会。
+    公开仓库的 Actions 日志任何人可见，于是关键词和关注作者就这样泄露出去了。
+    改成运行时用 API 读，值只存在于进程内存里，日志中不会出现。
+
+    返回 {} 表示「不在 Actions 里」或「读取失败」，此时退回 config.json / 默认值。
+    """
+    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+    repo = (os.environ.get("GITHUB_REPOSITORY") or "").strip()
+    if not token or not repo:
+        return {}
+    try:
+        resp = requests.get(
+            f"https://api.github.com/repos/{repo}/actions/variables",
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "arxiv-daily-wechat",
+            },
+            params={"per_page": 100},
+            timeout=30,
+        )
+    except requests.RequestException as exc:
+        print(f"      [警告] 读取仓库 Variables 异常: {exc}（筛选配置未生效）")
+        return {}
+    if resp.status_code != 200:
+        print(f"      [警告] 读取仓库 Variables 被拒 HTTP {resp.status_code}（筛选配置未生效）")
+        return {}
+    out = {}
+    for item in resp.json().get("variables", []):
+        key = _FILTER_VAR_KEYS.get(item.get("name", ""))
+        value = str(item.get("value") or "").strip()
+        if key and value:
+            out[key] = value
+    return out
+
+
 def load_config():
     """读取配置：环境变量优先，其次 config.json。"""
     cfg = {}
@@ -149,15 +207,36 @@ def load_config():
     }
 
     # ---------- 关注筛选（关键词 / 作者），用于额外提醒 ----------
-    # 环境变量 > config.json；不配置则不做任何筛选
+    # 取值顺序：环境变量（本地/自定义）> 仓库 Variables（Actions 内用 API 读，避免日志泄漏）
+    #          > config.json > 默认值
     flt_cfg = cfg.get("filter", {})
+    api_flt = _fetch_filter_vars()
+    if api_flt:
+        print(f"      [关注] 已从仓库 Variables 读到 {len(api_flt)} 项筛选配置")
+
+    def _list_value(env_name, api_key, cfg_key):
+        raw = (os.environ.get(env_name) or "").strip()
+        if raw:
+            return _split_list(raw)
+        raw = (api_flt.get(api_key) or "").strip()
+        if raw:
+            return _split_list(raw)
+        return list(flt_cfg.get(cfg_key) or [])
+
+    def _text_value(env_name, api_key, cfg_key, default=""):
+        for candidate in (os.environ.get(env_name), api_flt.get(api_key), flt_cfg.get(cfg_key)):
+            if candidate and str(candidate).strip():
+                return str(candidate).strip()
+        return default
+
     filter_cfg = {
-        "keywords": _split_list(os.environ.get("FILTER_KEYWORDS")) or list(flt_cfg.get("keywords") or []),
-        "authors": _split_list(os.environ.get("FILTER_AUTHORS")) or list(flt_cfg.get("authors") or []),
-        "author_categories": _split_list(os.environ.get("FILTER_AUTHOR_CATEGORIES"))
-        or list(flt_cfg.get("author_categories") or []),
-        "scope": (os.environ.get("FILTER_SCOPE") or flt_cfg.get("scope") or "title_abstract").strip(),
-        "logic": (os.environ.get("FILTER_LOGIC") or flt_cfg.get("logic") or "or").strip().lower(),
+        "keywords": _list_value("FILTER_KEYWORDS", "keywords", "keywords"),
+        "authors": _list_value("FILTER_AUTHORS", "authors", "authors"),
+        "author_categories": _list_value(
+            "FILTER_AUTHOR_CATEGORIES", "author_categories", "author_categories"
+        ),
+        "scope": _text_value("FILTER_SCOPE", "scope", "scope", "title_abstract"),
+        "logic": _text_value("FILTER_LOGIC", "logic", "logic", "or").lower(),
     }
 
     return {

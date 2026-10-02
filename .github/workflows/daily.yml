@@ -25,6 +25,8 @@ permissions:
   contents: write   # 需要写权限：把每日生成的页面提交回仓库，保留历史
   pages: write
   id-token: write
+  actions: read     # 读取仓库 Variables 里的筛选配置（main.py 运行时用 GITHUB_TOKEN 取，
+                    # 避免把关键词/作者写进 env 而被明文打印到公开日志）
 
 # 同一时间只允许一个部署在跑
 concurrency:
@@ -67,12 +69,11 @@ jobs:
           ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}   # 详细模式单次最多推送篇数，默认 200
           WECHAT_MODE: ${{ vars.WECHAT_MODE }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
-          # ---------- 关注筛选（Variables，全部留空=不筛选，行为与以前完全一致）----------
-          FILTER_KEYWORDS: ${{ vars.FILTER_KEYWORDS }}                     # 关注关键词，逗号分隔，如 "Calabi-Yau,Ricci flow"
-          FILTER_AUTHORS: ${{ vars.FILTER_AUTHORS }}                       # 关注作者，逗号分隔，如 "Shing-Tung Yau"（姓/名顺序随意）
-          FILTER_AUTHOR_CATEGORIES: ${{ vars.FILTER_AUTHOR_CATEGORIES }}   # 作者条件只在哪些分区生效，如 "math.DG,math.MG"（留空=全部分区）
-          FILTER_SCOPE: ${{ vars.FILTER_SCOPE }}                           # 关键词匹配范围: title / title_abstract（默认）/ all
-          FILTER_LOGIC: ${{ vars.FILTER_LOGIC }}                           # 关键词与作者的关系: or（默认）/ and
+          # ⚠️ 关注筛选（FILTER_*）刻意不在这里声明！
+          #    原因：GitHub 会把 run 步骤的 env 明文打印进运行日志，Secrets 会被打码、
+          #    但 Variables 不会。公开仓库的 Actions 日志任何人可见，写在这里等于公开
+          #    你的关注关键词和关注作者。改为由 main.py 在运行时用 GITHUB_TOKEN 从
+          #    仓库 Variables 读取（见 main.py 的 _fetch_filter_vars）。
           # GitHub Pages 推文页的根 URL（仓库名固定为 arxiv-daily-wechat）
           # 第一次部署后可以从 Actions 日志 / Pages 页面看到完整 URL
           PAGE_BASE_URL: https://jiangzhexin.github.io/arxiv-daily-wechat

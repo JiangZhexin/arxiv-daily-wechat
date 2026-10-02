@@ -228,6 +228,11 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 
 在仓库 **Settings → Secrets and variables → Actions → Variables** 里新建（不配置这些变量就是普通全量模式，不会有任何影响）：
 
+> 🔒 **为什么 workflow 里看不到 `FILTER_*` 的 `env` 声明？**
+> 这是刻意的。GitHub 会把每个 run 步骤的 `env` **明文打印进运行日志**——Secrets 会被打码成 `***`，而 **Variables 不会**；公开仓库的 Actions 日志任何人可见，把这些写进 `env` 等于公开你的关注方向。
+> 所以本项目改为：配置只存在 **Variables** 里，由 `main.py` 在运行时用 job 自带的 `GITHUB_TOKEN` 通过 API 读取（见 `_fetch_filter_vars`），日志里只会打印「读到几项配置」，不会出现具体值。
+> 这也意味着 workflow 需要 `actions: read` 权限（`daily.yml` 的 `permissions:` 已加）。
+
 | 变量名 | 说明 | 示例 |
 |---|---|---|
 | `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多词短语会整体匹配，多个关键词之间是「或」） | `Calabi-Yau,Ricci flow,minimal surface` |
