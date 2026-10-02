@@ -122,7 +122,7 @@ git push -u origin main
 | `ARXIV_MAX_PAPERS` | `200` | 单次最多推送多少篇 |
 | `WECHAT_MODE` | `digest` | `digest`=每天 1 条汇总；`detailed`=每篇 1 条含中英文摘要 |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | 使用的模型 |
-| `FILTER_KEYWORDS` 等 | *（留空）* | 关注关键词 / 作者，命中后额外提醒，见「五、关注关键词与作者」 |
+| `FILTER_SCOPE` / `FILTER_LOGIC` | `title_abstract` / `or` | 关注筛选的机制参数（含个人偏好的三项请放 **Secrets**，见「五、关注关键词与作者」） |
 
 ### 第 4 步：启用 GitHub Pages（重要）
 
@@ -226,20 +226,33 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 
 ### 配置方式
 
-在仓库 **Settings → Secrets and variables → Actions → Variables** 里新建（不配置这些变量就是普通全量模式，不会有任何影响）：
+这些配置分两处放，区别很重要（**放错了会把你的关注方向公开**）：
 
-> 🔒 **为什么 workflow 里看不到 `FILTER_*` 的 `env` 声明？**
-> 这是刻意的。GitHub 会把每个 run 步骤的 `env` **明文打印进运行日志**——Secrets 会被打码成 `***`，而 **Variables 不会**；公开仓库的 Actions 日志任何人可见，把这些写进 `env` 等于公开你的关注方向。
-> 所以本项目改为：配置只存在 **Variables** 里，由 `main.py` 在运行时用 job 自带的 `GITHUB_TOKEN` 通过 API 读取（见 `_fetch_filter_vars`），日志里只会打印「读到几项配置」，不会出现具体值。
-> 这也意味着 workflow 需要 `actions: read` 权限（`daily.yml` 的 `permissions:` 已加）。
+**① 放 Secrets**（`Settings → Secrets and variables → Actions → Secrets`）——含个人偏好，靠 GitHub 打码保护：
 
-| 变量名 | 说明 | 示例 |
+| Secret 名称 | 填什么 | 示例 |
 |---|---|---|
-| `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多词短语会整体匹配，多个关键词之间是「或」） | `Calabi-Yau,Ricci flow,minimal surface` |
+| `FILTER_KEYWORDS` | 关注关键词，**逗号分隔**（多个关键词之间是「或」） | `Calabi-Yau,Ricci flow` |
 | `FILTER_AUTHORS` | 关注作者，逗号分隔；**只写姓氏也能匹配**，**姓/名顺序随意** | `Shing-Tung Yau,Terence Tao` |
 | `FILTER_AUTHOR_CATEGORIES` | 作者条件**只在哪些分区生效**；填多个时**命中任一个即算**（留空 = 抓取的全部分区，推荐留空） | `math.DG,math.MG` |
+
+**② 放 Variables**（同一页面的 Variables 标签）——只是机制参数，不含隐私：
+
+| Variable 名称 | 说明 | 示例 |
+|---|---|---|
 | `FILTER_SCOPE` | 关键词匹配范围：`title`（仅标题）/ `title_abstract`（标题 + 摘要，默认）/ `all`（连作者、分区等元数据一起匹配） | `title_abstract` |
 | `FILTER_LOGIC` | 关键词与作者的关系：`or`（任一命中即可，默认）/ `and`（两类都命中才算） | `or` |
+
+> 🔒 **为什么不全部放 Variables？**
+> 因为 GitHub 会把每个 run 步骤的 `env` **明文打印进运行日志**——Secrets 会被打码成 `***`，而 **Variables 不会**。
+> 公开仓库的 Actions 日志**任何人可见**（`https://github.com/<用户名>/<仓库>/actions/runs/<运行号>`），
+> 把关键词和作者名放进 Variables 再注入 `env`，等于把它们公开贴在日志里。
+> 所以本项目把这些值放在 **Secrets**（自动打码），workflow 里也只写 `${{ secrets.FILTER_KEYWORDS }}` 这样的引用。
+>
+> 顺带一提：GitHub 的 job token（`GITHUB_TOKEN`）即使给了 `actions: read` 也**读不了**仓库 Variables（实测 403），
+> 所以「运行时用 API 偷偷读 Variables」这条路是走不通的 —— 放 Secrets 是唯一的干净做法。
+>
+> 想改关键词时：到 Secrets 页面点该名称 → **Update**，贴上新的值即可（Secret 创建后无法回看原值，这是 GitHub 的设计）。
 
 `FILTER_AUTHOR_CATEGORIES` 建议**留空**：arXiv 上同一位作者可能同时出现在多个分区（例如微分几何 `math.DG`、度量几何 `math.MG`），限定单一分区会漏掉一部分论文。只有在你确实只想盯某一个分区时才填。
 
@@ -283,13 +296,13 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 
 比如你关注「卡拉比-丘流形」这个方向，同时想盯着某位作者（下面只是示例，请换成你自己的）：
 
-| 变量名 | 填什么 |
-|---|---|
-| `FILTER_KEYWORDS` | `Calabi-Yau,Ricci flow` |
-| `FILTER_AUTHORS` | `Shing-Tung Yau` |
-| `FILTER_AUTHOR_CATEGORIES` | *（留空）* |
-| `FILTER_SCOPE` | `title_abstract` |
-| `FILTER_LOGIC` | `or` |
+| 放哪里 | 名称 | 填什么 |
+|---|---|---|
+| Secret | `FILTER_KEYWORDS` | `Calabi-Yau,Ricci flow` |
+| Secret | `FILTER_AUTHORS` | `Shing-Tung Yau` |
+| Secret | `FILTER_AUTHOR_CATEGORIES` | *（留空 = 不建这个 Secret）* |
+| Variable | `FILTER_SCOPE` | `title_abstract` |
+| Variable | `FILTER_LOGIC` | `or` |
 
 含义：标题或摘要里出现 `Calabi-Yau`（或 `Ricci flow`），**或者**你抓取的六个分区里任何一篇的作者是 `Shing-Tung Yau`，都会额外提醒一条。
 
@@ -300,7 +313,22 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
       [关注] 另加 1 条命中提醒消息
 ```
 
-如果显示 `[关注] 未配置关键词/作者，跳过命中检测`，说明变量没传进脚本——先确认变量建在 **Variables**（不是 Secrets）、名字拼写一致。
+如果显示 `[关注] 未配置关键词/作者，跳过命中检测`，说明配置没传进脚本——检查三件事：
+
+1. 名称拼写是否完全一致（`FILTER_KEYWORDS` 全大写）；
+2. 含个人偏好的三项是否建在 **Secrets**（不是 Variables）；
+3. 建完之后**要重新触发一次运行**才会生效（Secrets 改了不会自动重跑）。
+
+### 一个安全检查（建议每次改完做一次）
+
+下载一次真实运行日志，确认里面没有明文关键词/作者：
+
+```bash
+# 需要先装 gh 并登录；也可以在 Actions 页面点某次运行 → 右上角 Download log archive
+gh run view <运行号> --repo <用户名>/arxiv-daily-wechat --log | grep -i -E "FILTER_KEYWORDS|你的关键词"
+```
+
+日志里这几项应该显示成 `FILTER_KEYWORDS: ***`。**只要看到明文，就说明位置放错了**（放成 Variables 了）。
 
 ## 六、常见问题
 
