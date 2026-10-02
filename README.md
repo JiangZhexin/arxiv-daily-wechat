@@ -6,7 +6,7 @@
 
 - 完全免费（GitHub Actions 定时 + DeepSeek 日均约 0.02 元）
 - 不需要服务器、不需要电脑开机
-- 每天北京时间 12:30 自动推送（20:30 兜底补推，避免漏推），也可手动触发
+- 每天北京时间 07:30 自动运行（若 arXiv 索引延迟导致早上无结果，12:30 自动补推一次），也可手动触发
 
 ## 效果一览
 
@@ -27,6 +27,7 @@
 ```
 
 **点开消息 → GitHub Pages 网页**：按分区列出全部论文，每篇展开可看：
+- 👥 **作者**（arXiv 原文作者，保持原文不翻译）
 - 🤖 **AI 总结**（3-5 句：研究问题、方法、结果、意义）
 - 📖 **中文摘要**（AI 翻译）
 - 🌐 **English Abstract**（原文）
@@ -39,8 +40,9 @@ arxiv-daily-wechat/
 ├── main.py                  # 主流程：抓取 → 总结 → 生成网页 → 推送
 ├── arxiv_fetcher.py         # arXiv RSS 抓取（与网页实时同步，无索引延迟）
 ├── summarizer.py            # DeepSeek 批量生成中文标题/总结/AI总结/摘要翻译
-├── page_builder.py          # 生成每日 HTML 推文页（含历史索引）
+├── page_builder.py          # 生成每日 HTML 推文页（含作者、历史索引）
 ├── wechat_push.py           # 微信公众号测试号模板消息推送
+├── tools/backfill_authors.py # 给「加作者之前」生成的历史页面补作者（可选，手动跑）
 ├── config.example.json      # 本地配置模板（复制为 config.json 使用）
 ├── requirements.txt         # 依赖（仅 requests）
 └── .github/workflows/daily.yml  # GitHub Actions 定时任务 + Pages 部署
@@ -113,7 +115,7 @@ git push -u origin main
 |---|---|---|
 | `ARXIV_CATEGORIES` | `math.DG,math.GN,math.GT,math.GR,math.MG,math.NT` | 抓哪些分类 |
 | `ARXIV_HOURS_BACK` | `30` | 回看最近多少小时的论文（临时想看历史可调大，如 `120`） |
-| `ARXIV_MAX_PAPERS` | `200` | 详细模式单次最多推送多少篇 |
+| `ARXIV_MAX_PAPERS` | `30` | 单次最多推送多少篇 |
 | `WECHAT_MODE` | `digest` | `digest`=每天 1 条汇总；`detailed`=每篇 1 条含中英文摘要 |
 | `DEEPSEEK_MODEL` | `deepseek-chat` | 使用的模型 |
 
@@ -134,7 +136,7 @@ git push -u origin main
 📌 访问地址: https://jiangzhexin.github.io/arxiv-daily-wechat/
 ```
 
-之后每天自动运行两次：北京时间 12:30 主推送，20:30 兜底补推（去重机制保证已推送过的论文不会重复；12:30 因故没推时 20:30 自动补上）。arXiv 新论文在北京时间凌晨 2-3 点发布，中午推送时 RSS 已更新到位。
+之后每天自动运行两次：北京时间 07:30 主推送，12:30 兜底补推（早上因 arXiv 索引延迟没推到论文时，中午会自动补上；早上已推过则中午自动跳过，不会重复）。arXiv 新论文在北京时间凌晨 2-3 点发布，周末不发布。
 
 ## 三、本地运行（可选，方便调试）
 
@@ -198,7 +200,7 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 ### 其他相关设置
 
 - `ARXIV_HOURS_BACK`：回看最近多少小时的论文（默认 30；临时想看历史可调大到 120）
-- `ARXIV_MAX_PAPERS`：详细模式单次最多推送多少篇（默认 200）
+- `ARXIV_MAX_PAPERS`：单次最多推送多少篇（默认 30）
 
 ## 五、常见问题
 
@@ -223,11 +225,15 @@ arXiv 周六、周日不发布新论文，属正常现象；周一早上也会�
 **Q7：历史页面怎么保留？**
 每天生成的 `daily-YYYY-MM-DD.html` 会提交回仓库（工作流自动完成），网页顶部有"📅 历史速览"入口可回看。
 
-**Q8：推送的论文数量和 arXiv 网页上对不上？**
-本项目通过 **arXiv RSS 订阅源**实时抓取（与网页公告列表同步，无搜索 API 的索引延迟），并按"最近一次公告"合并去重。注意：arXiv 网页的 `recent` 页面显示的是**最近多个工作日的累计**（如某天 19 篇可能是好几天总和），而本项目每天推送的是**最近一次公告的新论文**；同时 `last_pushed.json` 会过滤掉已推送过的论文，避免重复。如果你在网页上看到多天的论文，而推送只包含当天新增，这是正常行为。
+**Q8：早先生成的页面没有作者行，能补吗？**
+能。跑一次回填脚本即可（它会用 arXiv API 按论文 id 查作者，然后写回页面文件）：
 
-**Q9：会不会重复推送？**
-不会。每次推送的论文 ID 都会记录到 `last_pushed.json`（由工作流自动提交回仓库），下次运行自动过滤掉已推送的论文。中午 12:30 推送成功后，晚上 20:30 的兜底运行会检测到"没有新论文"并自动跳过。
+```bash
+python tools/backfill_authors.py            # 处理 pages/ 目录下所有 daily-*.html
+python tools/backfill_authors.py 某个目录    # 或指定目录
+```
+
+脚本是幂等的：已有作者行的页面会自动跳过，重复跑不会重复插入。补完把 `pages/` 提交回仓库即可。
 
 ## 六、隐私与公开说明（重要，请 copy/fork 本项目的同学阅读）
 

@@ -9,7 +9,9 @@ page_builder.py
   - 分区目录（跳转锚点）
   - 每个分区一个 <section>，列出该区论文：
       [编号-链接到 arXiv] 中文标题
-      💡 一句话总结
+      英文标题
+      👥 作者（保持原文，不翻译）
+      🤖 AI 总结 / 💡 一句话总结 / 📖 中文摘要 / 🌐 英文摘要
       👉 arXiv URL（可点击）
 """
 import os
@@ -57,6 +59,7 @@ li { margin-bottom: 18px; }
 .title a:hover { text-decoration: underline; }
 .summary { color: #444; font-size: 0.95em; margin: 4px 0; }
 .en-title { color: #888; font-size: 0.88em; font-style: italic; margin: 2px 0; }
+.authors { color: #555; font-size: 0.88em; margin: 3px 0 5px; }
 .link { font-size: 0.85em; color: #888; word-break: break-all; }
 .link a { color: #06c; }
 details { margin: 4px 0; }
@@ -132,6 +135,10 @@ def build_daily_html(papers, summaries, categories, date_str, base_url="https://
 
             blocks = [f'<div class="title">[<a href="{arxiv_url}" target="_blank" rel="noopener">{p["id"]}</a>] {title_zh}</div>']
             blocks.append(f'<div class="en-title">{en_title}</div>')
+            authors = [a for a in (p.get("authors") or []) if a]
+            if authors:
+                names = ", ".join(_escape(a) for a in authors)
+                blocks.append(f'<div class="authors">👥 {names}</div>')
             if ai_summary:
                 ai_lines = "".join(f"<div class='ai-line'>• {line}</div>" for line in ai_summary.splitlines() if line.strip())
                 blocks.append(f'<details class="ai"><summary>🤖 AI 总结</summary>{ai_lines}</details>')

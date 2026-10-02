@@ -11,7 +11,9 @@ arxiv_fetcher.py
 
 本模块只依赖标准库 xml.etree 和 requests。
 """
+import re
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 
@@ -43,6 +45,137 @@ def _parse_rss_date(raw: str):
         except ValueError:
             continue
     return None
+
+
+# LaTeX 重音命令 → Unicode 组合符号（用 NFC 合成成带音标的字母）
+_ACCENT_COMBINING = {
+    "'": "\u0301",   # 尖音符 \'e → é
+    "`": "\u0300",   # 抑音符 \`e → è
+    "^": "\u0302",   # 扬抑符 \^o → ô
+    "~": "\u0303",   # 波浪号 \~n → ñ
+    "=": "\u0304",   # 长音符 \=o → ō
+    "u": "\u0306",   # 短音符 \u{a} → ă
+    ".": "\u0307",   # 上点 \.z → ż
+    '"': "\u0308",   # 分音符 \"o → ö
+    "r": "\u030a",   # 上圈 \r{a} → å
+    "H": "\u030b",   # 双尖音 \H{o} → ő
+    "v": "\u030c",   # 抑扬符 \v{s} → š
+    "c": "\u0327",   # 下加符 \c{c} → ç
+    "k": "\u0328",   # 反尾形符 \k{a} → ą
+    "d": "\u0323",   # 下点 \d{u} → ụ
+    "b": "\u0331",   # 下横线 \b{h} → ẖ
+}
+
+# \o \ss \ae 之类的符号命令 → 字符
+_SYMBOL_COMMANDS = {
+    "ss": "ß", "o": "ø", "O": "Ø", "l": "ł", "L": "Ł",
+    "aa": "å", "AA": "Å", "ae": "æ", "AE": "Æ", "oe": "œ", "OE": "Œ",
+}
+
+_LETTER = r"[A-Za-z\u00c0-\u024f]"
+
+
+def _clean_author_name(name: str) -> str:
+    """把 arXiv 里的 LaTeX 转义作者名还原成普通文本。
+
+    例：``Manuel Cruz-L\\'opez`` → ``Manuel Cruz-López``；
+        ``{\\O}ystein Skarts{\\ae}terhagen`` → ``Øystein Skartsæterhagen``。
+    """
+    s = (name or "").strip()
+    if not s:
+        return ""
+
+    # 1) 只起包裹作用的命令，保留其中内容
+    s = re.sub(
+        r"\\(?:text|textrm|textit|textnormal|texttt|textsc|textup|mathrm|mathbf|mathit|mathsf|mathtt|mbox|hbox|emph|mathrm)"
+        r"\s*\{([^{}]*)\}",
+        r"\1",
+        s,
+    )
+    # {\bf A} / \it A 之类的字体切换命令，直接删掉
+    s = re.sub(r"\\(?:bf|it|rm|sl|sc|tt|tiny|small|large|normalsize)(?=[A-Za-z{\s])", "", s)
+    # \i \j（无点字母，常用于 \'\i）
+    s = re.sub(r"\\i(?![A-Za-z])", "\u0131", s)
+    s = re.sub(r"\\j(?![A-Za-z])", "\u0237", s)
+
+    # 2) 重音命令：\'e、\'{e}、\' e 都归一为带音标字母
+    def _accent(m):
+        cmd, letter = m.group(1), m.group(2)
+        comb = _ACCENT_COMBINING.get(cmd)
+        if not comb:
+            return letter
+        # ı + 尖音符没有预组合字符，用 i 合成（如 \'\i → í）
+        if letter == "\u0131":
+            letter = "i"
+        elif letter == "\u0237":
+            letter = "j"
+        return unicodedata.normalize("NFC", letter + comb)
+
+    s = re.sub(r"\\([`'\"^~=.uvHckrdb])\s*\{?(" + _LETTER + r")\}?", _accent, s)
+
+    # 3) 符号命令（\ss \o \ae …），长命令优先，且后面不能紧跟字母。
+    #    LaTeX 里控制词后的空格会被吞掉（S\o rensen → Sørensen），这里一并处理。
+    s = re.sub(
+        r"\\(ss|aa|AA|ae|AE|oe|OE|o|O|l|L)(?![A-Za-z]) ?",
+        lambda m: _SYMBOL_COMMANDS.get(m.group(1), m.group(1)),
+        s,
+    )
+
+    # 4) 兜底：清掉残留的花括号与反斜杠命令，压缩空白
+    s = re.sub(r"\\(?:[A-Za-z]+|.)", "", s)
+    s = s.replace("{", "").replace("}", "")
+    s = " ".join(s.split())
+    # 去掉清洗后可能留下的首尾孤立标点
+    s = s.strip(" ,;")
+    return s
+
+
+def _parse_authors(item) -> list:
+    """从 RSS item 解析作者列表（arXiv 的 dc:creator 是逗号分隔的作者串）。"""
+    chunks = [el.text for el in item.findall("dc:creator", NS) if el.text]
+    if not chunks:
+        fallback = item.findtext("dc:creator", default="", namespaces=NS) or ""
+        chunks = [fallback]
+
+    authors = []
+    for chunk in chunks:
+        for name in str(chunk).split(","):
+            cleaned = _clean_author_name(name)
+            if cleaned and cleaned not in authors:
+                authors.append(cleaned)
+    return authors
+
+
+def _fetch_missing_authors(papers, headers, timeout=60):
+    """RSS 没给作者时，用 arXiv API 按 id 批量补齐（每批最多 100 个 id）。"""
+    missing = [p["id"] for p in papers if not p.get("authors")]
+    if not missing:
+        return
+    by_id = {p["id"]: p for p in papers}
+    for i in range(0, len(missing), 100):
+        batch = missing[i : i + 100]
+        try:
+            resp = requests.get(
+                ARXIV_API_URL,
+                params={"id_list": ",".join(batch), "max_results": len(batch)},
+                headers=headers,
+                timeout=timeout,
+            )
+            resp.raise_for_status()
+            root = ET.fromstring(resp.text)
+        except (requests.RequestException, ET.ParseError) as exc:
+            print(f"  [警告] 补齐作者失败（{len(batch)} 篇）: {exc}")
+            continue
+        for entry in root.iter("{http://www.w3.org/2005/Atom}entry"):
+            link = entry.findtext("{http://www.w3.org/2005/Atom}id", default="") or ""
+            pid = link.split("/abs/")[-1].strip()
+            names = [
+                _clean_author_name(a.findtext("{http://www.w3.org/2005/Atom}name", default="") or "")
+                for a in entry.findall("{http://www.w3.org/2005/Atom}author")
+            ]
+            if pid in by_id:
+                by_id[pid]["authors"] = [n for n in names if n]
+        print(f"  [调试] 已用 arXiv API 补齐 {len(batch)} 篇的作者")
 
 
 def _fetch_rss(cat, headers, timeout=60):
@@ -123,7 +256,7 @@ def fetch_new_papers(
             abstract = desc.split("Abstract: ", 1)[-1] if "Abstract: " in desc else desc
             abstract = " ".join(abstract.split())
 
-            authors = [a.strip() for a in (item.findtext("dc:creator", default="", namespaces=NS) or "").split(",") if a.strip()]
+            authors = _parse_authors(item)
 
             all_categories = [c.text.strip() for c in item.findall("category") if c.text and c.text.strip()]
             primary = all_categories[0] if all_categories else cat
@@ -146,4 +279,8 @@ def fetch_new_papers(
 
     papers.sort(key=lambda p: p["published"], reverse=True)
     print(f"  [调试] 合并后共 {len(papers)} 篇（去重后）")
+
+    # RSS 偶尔不给 dc:creator，用 API 兜底补齐作者
+    _fetch_missing_authors(papers, headers)
+
     return papers
