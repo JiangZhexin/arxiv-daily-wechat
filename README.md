@@ -262,17 +262,17 @@ math.DG,math.GN,math.GT,math.GR,math.MG,math.NT,math.AP
 
 ### 一个完整的配置示例
 
-比如你关注「阿波罗尼奥斯圆填充」这个方向，同时想盯着某位作者：
+比如你关注「卡拉比-丘流形」这个方向，同时想盯着某位作者（下面只是示例，请换成你自己的）：
 
 | 变量名 | 填什么 |
 |---|---|
-| `FILTER_KEYWORDS` | `Apollonian,circle packing` |
-| `FILTER_AUTHORS` | `Hou Yong` |
+| `FILTER_KEYWORDS` | `Calabi-Yau,Ricci flow` |
+| `FILTER_AUTHORS` | `Shing-Tung Yau` |
 | `FILTER_AUTHOR_CATEGORIES` | *（留空）* |
 | `FILTER_SCOPE` | `title_abstract` |
 | `FILTER_LOGIC` | `or` |
 
-含义：标题或摘要里出现 `Apollonian`（或 `circle packing`），**或者**这六个分区里任何一篇的作者是 `Yong Hou`，都会额外提醒一条。
+含义：标题或摘要里出现 `Calabi-Yau`（或 `Ricci flow`），**或者**你抓取的六个分区里任何一篇的作者是 `Shing-Tung Yau`，都会额外提醒一条。
 
 配置是否生效，看这一次 Actions 运行的日志，会打印这两行：
 
