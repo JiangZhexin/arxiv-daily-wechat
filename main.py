@@ -134,9 +134,14 @@ def _fetch_filter_vars():
 
     返回 {} 表示「不在 Actions 里」或「读取失败」，此时退回 config.json / 默认值。
     """
-    token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+    token = (
+        os.environ.get("REPO_VARS_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    ).strip()
     repo = (os.environ.get("GITHUB_REPOSITORY") or "").strip()
-    if not token or not repo:
+    if not repo:
+        return {}  # 本地运行：走 config.json / 环境变量
+    if not token:
+        print("      [警告] 没拿到读 Variables 的 token（workflow 需传 REPO_VARS_TOKEN），筛选配置未生效")
         return {}
     try:
         resp = requests.get(
