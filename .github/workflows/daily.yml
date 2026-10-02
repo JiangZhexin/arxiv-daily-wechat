@@ -51,6 +51,12 @@ jobs:
           ARXIV_MAX_PAPERS: ${{ vars.ARXIV_MAX_PAPERS }}   # 详细模式单次最多推送篇数，默认 200
           WECHAT_MODE: ${{ vars.WECHAT_MODE }}
           DEEPSEEK_MODEL: ${{ vars.DEEPSEEK_MODEL }}
+          # ---------- 关注筛选（Variables，全部留空=不筛选，行为与以前完全一致）----------
+          FILTER_KEYWORDS: ${{ vars.FILTER_KEYWORDS }}                     # 关注关键词，逗号分隔，如 "Apollonian,circle packing"
+          FILTER_AUTHORS: ${{ vars.FILTER_AUTHORS }}                       # 关注作者，逗号分隔，如 "Hou Yong"（姓/名顺序随意）
+          FILTER_AUTHOR_CATEGORIES: ${{ vars.FILTER_AUTHOR_CATEGORIES }}   # 作者条件只在哪些分区生效，如 "math.GT,math.GR"（留空=全部分区）
+          FILTER_SCOPE: ${{ vars.FILTER_SCOPE }}                           # 关键词匹配范围: title / title_abstract（默认）/ all
+          FILTER_LOGIC: ${{ vars.FILTER_LOGIC }}                           # 关键词与作者的关系: or（默认）/ and
           # GitHub Pages 推文页的根 URL（仓库名固定为 arxiv-daily-wechat）
           # 第一次部署后可以从 Actions 日志 / Pages 页面看到完整 URL
           PAGE_BASE_URL: https://jiangzhexin.github.io/arxiv-daily-wechat
