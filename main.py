@@ -394,11 +394,15 @@ def main():
     pushed_ids = _load_pushed_ids()
     new_papers = [p for p in papers if p["id"] not in pushed_ids]
     if not new_papers:
-        print(f"[完成] 没有新论文（窗口内 {len(papers)} 篇均已推送过），不重复推送。")
-        return
-    if len(new_papers) < len(papers):
-        print(f"      [去重] 已推送过 {len(papers) - len(new_papers)} 篇，本次实际新增 {len(new_papers)} 篇")
-    papers = new_papers
+        if not args.dry_run:
+            print(f"[完成] 没有新论文（窗口内 {len(papers)} 篇均已推送过），不重复推送。")
+            return
+        # dry-run 只用于核对推送内容：即使全部推送过也继续预览（真实运行不会推送）
+        print(f"[dry-run] 窗口内 {len(papers)} 篇均已推送过；仍继续预览以供核对（实际运行时这次不会推送）")
+    else:
+        if len(new_papers) < len(papers):
+            print(f"      [去重] 已推送过 {len(papers) - len(new_papers)} 篇，本次实际新增 {len(new_papers)} 篇")
+        papers = new_papers
 
     # 3) 总结（全量论文都总结，网页需要全部）
     print(f"[2/3] 调用 DeepSeek（{ds_cfg['model']}）生成中文总结 ...")

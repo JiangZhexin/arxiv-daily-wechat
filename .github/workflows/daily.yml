@@ -1,15 +1,24 @@
 name: arxiv-daily-wechat
 
 # 触发方式：
-#   schedule  -> 每天两次自动运行（若早上已推送，中午那次会被去重机制跳过，不会重复）：
-#                ① UTC 23:30 = 北京时间 07:30（arXiv 新论文在北京时间凌晨 2-3 点发布）
-#                ② UTC 04:30 = 北京时间 12:30（兜底：arXiv API 索引延迟导致早上 0 篇时，中午补推）
-#   workflow_dispatch -> 也可以在 Actions 页面手动点击「Run workflow」测试
+#   schedule  -> 每天自动运行；触发后先「等到北京时间 12:25」再抓取推送（见 wait_until.py）。
+#                ⚠️ GitHub Actions 的 schedule 不保证准时：实测本仓库会比设定时间晚 2~5 小时触发。
+#                   所以 cron 故意设在目标时刻之前，由任务自己等到点再干活 —— 这样无论
+#                   GitHub 延迟多久，推送都落在同一时刻（默认北京时间 12:25）。
+#                ① UTC 01:15 = 北京 09:15（主推：延迟后约 11:00~12:22 触发 → 等到 12:25 推送）
+#                ② UTC 03:00 = 北京 11:00（兜底：主推整个没跑起来时，这次会在午后补推）
+#                两次之间有去重机制，不会重复推送同一批论文。
+#   workflow_dispatch -> 在 Actions 页面手动「Run workflow」；可勾选 dry_run 只预览不推送
 on:
   schedule:
-    - cron: "30 23 * * *"
-    - cron: "30 4 * * *"
+    - cron: "15 1 * * *"
+    - cron: "0 3 * * *"
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只预览不推送（验证配置用，勾选后不会发微信）"
+        type: boolean
+        default: false
 
 # Pages 部署需要的权限
 permissions:
@@ -34,6 +43,13 @@ jobs:
 
       - name: 安装依赖
         run: pip install -r requirements.txt
+
+      - name: 等到北京时间 12:25（抵消 GitHub schedule 的延迟，保证准点收到）
+        if: github.event_name == 'schedule'
+        env:
+          # 可选：想改推送时刻就在 Variables 里建一个 PUSH_AT，值形如 12:25（北京时间）
+          PUSH_AT: ${{ vars.PUSH_AT }}
+        run: python tools/wait_until.py "${PUSH_AT:-12:25}"
 
       - name: 抓取 arXiv + 生成推文页面 + 推送微信
         env:
@@ -60,7 +76,13 @@ jobs:
           # GitHub Pages 推文页的根 URL（仓库名固定为 arxiv-daily-wechat）
           # 第一次部署后可以从 Actions 日志 / Pages 页面看到完整 URL
           PAGE_BASE_URL: https://jiangzhexin.github.io/arxiv-daily-wechat
-        run: python main.py
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            echo "🧪 dry-run：只预览消息内容，不发送微信"
+            python main.py --dry-run
+          else
+            python main.py
+          fi
 
       - name: 把生成的页面和推送记录提交回仓库（保留历史 + 去重状态）
         run: |
